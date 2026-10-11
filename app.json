@@ -1,0 +1,16 @@
+{
+  "name": "Asset 360",
+  "description": "A search-and-investigate app — the Asset 360 Investigation Workspace",
+  "externalId": "asset-360",
+  "versionTag": "0.0.1",
+  "infra": "appsApi",
+  "deployments": [
+    {
+      "org": "publicdata",
+      "project": "publicdatacdm",
+      "baseUrl": "https://api.cognitedata.com",
+      "deployClientId": "",
+      "deploySecretName": "PUBLICDATA_PUBLICDATACDM_API"
+    }
+  ]
+}
