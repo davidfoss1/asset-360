@@ -47,6 +47,19 @@ describe(AssetSearch.name, () => {
     expect(label).toHaveClass('flex-1', 'text-left', 'truncate');
   });
 
+  it('opens the list under the left edge of the button, as wide as the button', async () => {
+    // happy-dom cannot lay anything out. Aura centres a popover under its trigger by default, which
+    // leaves a narrower list floating in the middle of a wide button; this guards the alignment and width.
+    const { user } = renderSearch({ initialState: { assetId: PUMP.id } });
+
+    await user.click(screen.getByRole('combobox'));
+
+    const input = await screen.findByPlaceholderText(/search by tag/i);
+    const positioner = input.closest('[data-align]');
+    expect(positioner).toHaveAttribute('data-align', 'start');
+    expect(input.closest('[data-slot="popover-content"]')).toHaveClass('w-[var(--anchor-width)]');
+  });
+
   it('shows the selected asset name on the trigger', async () => {
     renderSearch({ initialState: { assetId: PUMP.id } });
 

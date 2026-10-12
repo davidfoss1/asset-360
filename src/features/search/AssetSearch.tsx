@@ -57,7 +57,7 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
           </Button>
         }
       />
-      <PopoverContent className="w-96 p-0">
+      <PopoverContent align="start" className="w-[var(--anchor-width)] p-0">
         {/* The server already ranks results, so Command must not re-filter or re-sort them. */}
         <Command shouldFilter={false}>
           <CommandInput
