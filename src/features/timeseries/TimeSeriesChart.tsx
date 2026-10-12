@@ -4,12 +4,14 @@ import { CartesianGrid, Line, LineChart, XAxis, YAxis } from 'recharts';
 import { formatNumber } from '../../lib/format';
 import type { SeriesPoint } from '../../services/DatapointsService';
 
-const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+import { formatTimeTick, niceTimeTicks } from './timeTicks';
+import type { TimeWindow } from './useTimeSeriesViewModel';
+
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
-type TimeSeriesChartProps = { name: string; unit?: string; points: SeriesPoint[] };
+type TimeSeriesChartProps = { name: string; unit?: string; points: SeriesPoint[]; window: TimeWindow };
 
-export function TimeSeriesChart({ name, unit, points }: TimeSeriesChartProps) {
+export function TimeSeriesChart({ name, unit, points, window }: TimeSeriesChartProps) {
   const config = { value: { label: unit ? `${name} (${unit})` : name, color: 'var(--color-chart-fjord-color-1)' } } satisfies ChartConfig;
 
   return (
@@ -20,8 +22,11 @@ export function TimeSeriesChart({ name, unit, points }: TimeSeriesChartProps) {
           dataKey="timestamp"
           type="number"
           scale="time"
-          domain={['dataMin', 'dataMax']}
-          tickFormatter={(value: number) => timeFormat.format(value)}
+          // The axis covers the whole window, whether or not there are points all through it, and the
+          // marks are round clock times rather than whatever numbers Recharts would pick.
+          domain={[window.start, window.end]}
+          ticks={niceTimeTicks(window.start, window.end)}
+          tickFormatter={formatTimeTick}
         />
         <YAxis width={56} tickFormatter={(value: number) => formatNumber(value)} />
         <ChartTooltip

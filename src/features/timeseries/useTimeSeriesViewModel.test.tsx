@@ -61,7 +61,8 @@ describe(useTimeSeriesViewModel.name, () => {
     expect(result.current.timeSeries).toEqual([STATUS, PRESSURE, TEMP]);
     expect(result.current.selected).toEqual(PRESSURE);
     expect(result.current.points).toEqual(POINTS);
-    expect(result.current.windowEnd).toBe(LATEST);
+    // The axis covers the whole 24 hours, ending at the latest datapoint, not just where there are points.
+    expect(result.current.window).toEqual({ start: LATEST - DAY, end: LATEST });
     expect(getLatest).toHaveBeenCalledWith(PRESSURE.id);
     // `end` is exclusive, so it is one millisecond past the latest datapoint.
     expect(getSeries).toHaveBeenCalledWith(PRESSURE.id, { start: LATEST - DAY, end: LATEST + 1 });
@@ -71,7 +72,7 @@ describe(useTimeSeriesViewModel.name, () => {
     const { result, getSeries } = setup({ series: [PRESSURE], getLatest: () => Promise.resolve(undefined) });
 
     await waitFor(() => expect(result.current.dataStatus).toBe('empty'));
-    expect(result.current.windowEnd).toBeUndefined();
+    expect(result.current.window).toBeUndefined();
     expect(getSeries).not.toHaveBeenCalled();
   });
 

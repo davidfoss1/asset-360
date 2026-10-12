@@ -8,6 +8,7 @@ import { TimeSeriesChart } from './TimeSeriesChart';
 
 const HOUR = 60 * 60 * 1000;
 const START = Date.UTC(2026, 8, 1, 12, 0);
+const WINDOW = { start: START - 2 * HOUR, end: START - 2 * HOUR + 24 * HOUR };
 const POINTS: SeriesPoint[] = [
   { timestamp: START, value: 1200 },
   { timestamp: START + HOUR, value: 2500 },
@@ -26,19 +27,19 @@ describe(TimeSeriesChart.name, () => {
   });
 
   it('describes the chart for assistive technology, naming the series and its window', () => {
-    render(<TimeSeriesChart name="Pressure" unit="bar" points={POINTS} />);
+    render(<TimeSeriesChart name="Pressure" unit="bar" points={POINTS} window={WINDOW} />);
 
     expect(screen.getByRole('img', { name: 'Pressure over the 24 hours up to its latest datapoint' })).toBeInTheDocument();
   });
 
   it('draws the series as a line', () => {
-    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} />);
+    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} window={WINDOW} />);
 
     expect(container.querySelector('.recharts-line')).toBeInTheDocument();
   });
 
   it('labels the value axis with grouped digits', () => {
-    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} />);
+    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} window={WINDOW} />);
 
     const ticks = tickLabels(container, 'yAxis');
     expect(ticks.length).toBeGreaterThan(0);
@@ -47,17 +48,23 @@ describe(TimeSeriesChart.name, () => {
     expect(ticks.some((tick) => tick.length > 3 && !/^\d+$/.test(tick))).toBe(true);
   });
 
-  it('labels the time axis with clock times', () => {
-    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} />);
+  it('labels the time axis with a few round times, and a date where the day changes', () => {
+    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} window={WINDOW} />);
 
-    const ticks = tickLabels(container, 'xAxis');
-    expect(ticks.length).toBeGreaterThan(0);
-    expect(ticks.every((tick) => /\d{1,2}[:.]\d{2}/.test(tick))).toBe(true);
+    const labels = tickLabels(container, 'xAxis');
+    const clockLabels = labels.filter((label) => /\d[:.]\d{2}/.test(label));
+    const dateLabels = labels.filter((label) => !/\d[:.]\d{2}/.test(label));
+    expect(labels.length).toBeGreaterThanOrEqual(4);
+    expect(labels.length).toBeLessThanOrEqual(7);
+    // Never a minute like :46: round marks only, which for a 24-hour window are whole hours.
+    expect(clockLabels.every((label) => /\d[:.]00/.test(label))).toBe(true);
+    // The 24 hours cross midnight, and that mark reads as a date.
+    expect(dateLabels.length).toBeGreaterThanOrEqual(1);
   });
 
   it('shows the full date and time of the hovered point in the tooltip', async () => {
     // Arrange
-    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} />);
+    const { container } = render(<TimeSeriesChart name="Pressure" points={POINTS} window={WINDOW} />);
     const wrapper = container.querySelector('.recharts-wrapper');
 
     // Act

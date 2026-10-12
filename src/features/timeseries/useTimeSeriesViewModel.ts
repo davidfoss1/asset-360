@@ -10,7 +10,8 @@ import { useAppState } from '../../state/useAppState';
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // react-query rejects `undefined` results, so "no datapoints" is a null window end.
-type SeriesWindow = { points: SeriesPoint[]; windowEnd: number | null };
+export type TimeWindow = { start: number; end: number };
+type SeriesWindow = { points: SeriesPoint[]; window: TimeWindow | null };
 
 export type TimeSeriesViewModel = {
   listStatus: LoadStatus;
@@ -23,8 +24,8 @@ export type TimeSeriesViewModel = {
   dataStatus: LoadStatus;
   /** Chart points for a numeric series. Empty for string and state series. */
   points: SeriesPoint[];
-  /** Where the chart's 24-hour window ends: the series' latest datapoint. Undefined if it has none. */
-  windowEnd: number | undefined;
+  /** The chart's 24 hours, ending at the series' latest datapoint. Undefined if it has none. */
+  window: TimeWindow | undefined;
   /** Latest value for a string or state series. */
   latest: LatestPoint | undefined;
   refresh: () => void;
@@ -57,15 +58,13 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
   const series = useQuery({
     queryKey: ['datapoints', 'series', selected?.id.space, selected?.id.externalId],
     queryFn: async (): Promise<SeriesWindow> => {
-      if (!selected) return { points: [], windowEnd: null };
+      if (!selected) return { points: [], window: null };
       const newest = await datapoints.getLatest(selected.id);
-      if (!newest) return { points: [], windowEnd: null };
+      if (!newest) return { points: [], window: null };
+      const range = { start: newest.timestamp - WINDOW_MS, end: newest.timestamp };
       // The API's `end` is exclusive; +1 ms keeps the latest datapoint inside the window.
-      const points = await datapoints.getSeries(selected.id, {
-        start: newest.timestamp - WINDOW_MS,
-        end: newest.timestamp + 1,
-      });
-      return { points, windowEnd: newest.timestamp };
+      const points = await datapoints.getSeries(selected.id, { start: range.start, end: range.end + 1 });
+      return { points, window: range };
     },
     enabled: selected !== undefined && isNumeric,
   });
@@ -88,7 +87,7 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
       ? toLoadStatus(series, (window) => window.points.length === 0)
       : toLoadStatus(latest, (point) => point === null),
     points: series.data?.points ?? [],
-    windowEnd: series.data?.windowEnd ?? undefined,
+    window: series.data?.window ?? undefined,
     latest: latest.data ?? undefined,
     refresh: () => void active.refetch(),
     isRefreshing: active.isRefetching,

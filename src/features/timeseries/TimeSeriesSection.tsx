@@ -19,7 +19,7 @@ export function TimeSeriesSection() {
     retryList,
     dataStatus,
     points,
-    windowEnd,
+    window,
     latest,
     refresh,
     isRefreshing,
@@ -60,11 +60,9 @@ export function TimeSeriesSection() {
         </div>
 
         <SectionState label="datapoints" status={dataStatus} emptyTitle="No datapoints for this series" onRetry={refresh}>
-          {selected?.type === 'numeric' && summary ? (
+          {selected?.type === 'numeric' && summary && window ? (
             <div className="flex flex-col gap-3">
-              {windowEnd !== undefined ? (
-                <p className="text-sm text-muted-foreground">Showing the 24 hours up to {formatDateTime(windowEnd)}</p>
-              ) : null}
+              <p className="text-sm text-muted-foreground">Showing the 24 hours up to {formatDateTime(window.end)}</p>
               <p className="text-sm">
                 <span>Latest: {formatNumber(summary.latest.value)}{unit}</span>
                 {' · '}
@@ -74,7 +72,7 @@ export function TimeSeriesSection() {
                 {' · '}
                 <span>{formatDateTime(summary.latest.timestamp)}</span>
               </p>
-              <TimeSeriesChart name={selected.name} unit={selected.unit} points={points} />
+              <TimeSeriesChart name={selected.name} unit={selected.unit} points={points} window={window} />
             </div>
           ) : null}
           {selected && selected.type !== 'numeric' && latest ? (
