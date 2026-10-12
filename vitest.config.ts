@@ -11,7 +11,16 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      exclude: ['node_modules/', 'dist/', '.claude/', '.agents/', 'vitest.setup.ts', '**/*.config.ts', '**/*.d.ts'],
+      // Measure all production code under src/, as the certification gate does.
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/**/*.d.ts',
+        'src/main.tsx',
+        // Copied from Cognite's integrate-file-viewer skill (one import path adjusted for react-pdf 9.2).
+        // Third-party-style code that needs pdf.js, which cannot run in the test environment.
+        'src/cognite-file-viewer/**',
+      ],
     },
   },
 });
