@@ -40,10 +40,12 @@ export function SectionState({ label, status, emptyTitle, emptyDescription, onRe
       );
     case 'empty':
       return (
-        <EmptyState type="no-results">
-          <EmptyStateTitle>{emptyTitle}</EmptyStateTitle>
-          {emptyDescription ? <EmptyStateDescription>{emptyDescription}</EmptyStateDescription> : null}
-        </EmptyState>
+        <div className="py-6">
+          <EmptyState type="no-results">
+            <EmptyStateTitle>{emptyTitle}</EmptyStateTitle>
+            {emptyDescription ? <EmptyStateDescription>{emptyDescription}</EmptyStateDescription> : null}
+          </EmptyState>
+        </div>
       );
     case 'success':
       return <>{children}</>;

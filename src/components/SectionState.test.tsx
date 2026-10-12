@@ -34,6 +34,13 @@ describe(SectionState.name, () => {
     expect(screen.queryByText('content')).not.toBeInTheDocument();
   });
 
+  it('gives the empty state room, so it does not sit tight against the tabs above it', () => {
+    // happy-dom cannot measure layout, so this guards the padding class that provides the room.
+    renderSection('empty');
+
+    expect(screen.getByText('No files').closest('.py-6')).toBeInTheDocument();
+  });
+
   it('renders an error with a retry action', async () => {
     // Arrange
     const { onRetry } = renderSection('error');
