@@ -1,29 +1,192 @@
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { HostAppAPI, ConnectToHostAppResult } from '@cognite/app-sdk';
+import type { HostAppAPI } from '@cognite/app-sdk';
 import { CogniteClient } from '@cognite/sdk';
-import type { ComponentProps } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ComponentProps, ComponentType, ReactNode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { stubLayoutSize } from './__mocks__/stubLayout';
+import { makeDeps } from './__mocks__/viewModelWrapper';
 import App from './App';
+import type { AppDeps } from './deps/AppDepsContext';
+import type { AssetDetail, AssetSummary } from './services/AssetService';
+import type { ActivityItem, FileItem, TimeSeriesItem } from './services/RelatedDataService';
 
-type AppDeps = NonNullable<ComponentProps<typeof App>['deps']>;
-
+type SdkDeps = NonNullable<ComponentProps<typeof App>['deps']>;
 type AppApi = Pick<HostAppAPI, 'syncInternalState'>;
 
-function makeApi(): AppApi {
-  return {
-    syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)),
+const PUMP: AssetSummary = { id: { space: 's', externalId: 'pump-101' }, name: 'PUMP-101', description: 'Feed pump' };
+const PUMP_DETAIL: AssetDetail = { ...PUMP, assetClass: 'Pump' };
+const PRESSURE: TimeSeriesItem = { id: { space: 's', externalId: 'pressure' }, name: 'Pressure', type: 'numeric', unit: 'bar' };
+const SEAL: ActivityItem = { id: { space: 's', externalId: 'wo-1' }, name: 'Replace seal' };
+const PID: FileItem = { id: { space: 's', externalId: 'pid' }, name: 'P&ID.pdf', isUploaded: true };
+
+describe('App', () => {
+  let restoreLayout: () => void;
+
+  beforeEach(() => {
+    restoreLayout = stubLayoutSize();
+  });
+
+  afterEach(() => {
+    restoreLayout();
+  });
+
+  it('shows a loading state while connecting to the host', () => {
+    render(<App deps={makeSdkDeps()} connectToHostApp={() => new Promise<never>(() => undefined)} />);
+
+    expect(screen.getByText('Loading project...')).toBeInTheDocument();
+  });
+
+  it('shows an error when the host connection fails', async () => {
+    render(<App deps={makeSdkDeps()} connectToHostApp={() => Promise.reject(new Error('no host'))} />);
+
+    expect(await screen.findByText('Failed to connect to Fusion host')).toBeInTheDocument();
+  });
+
+  it('starts with a prompt to search for an asset', async () => {
+    renderApp();
+
+    expect(await screen.findByText('Search for an asset to begin')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Asset 360' })).toBeInTheDocument();
+  });
+
+  it('finds an asset by tag and shows its time series, activities and files together', async () => {
+    // Arrange
+    const { api } = renderApp();
+    const user = userEvent.setup();
+
+    // Act
+    await searchAndSelect(user, 'pump');
+
+    // Assert
+    expect(await screen.findByRole('heading', { name: 'PUMP-101' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Time series' })).toHaveTextContent('Pressure');
+    expect(await screen.findByText(/Latest: 4.2 bar/)).toBeInTheDocument();
+    expect(await screen.findByText('Replace seal')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
+    expect(api.syncInternalState).toHaveBeenLastCalledWith(expect.stringContaining('"externalId":"pump-101"'));
+  });
+
+  it('shows a no-results state when nothing matches', async () => {
+    renderApp({ assets: { search: () => Promise.resolve([]) } });
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('combobox', { name: 'Asset' }));
+    await user.type(screen.getByPlaceholderText(/search by tag/i), 'zzz');
+
+    expect(await screen.findByText(/no assets match/i)).toBeInTheDocument();
+  });
+
+  it('shows an empty state for an asset with no time series, activities or files', async () => {
+    renderApp({
+      related: {
+        listTimeSeries: () => Promise.resolve([]),
+        listActivities: () => Promise.resolve([]),
+        listFiles: () => Promise.resolve([]),
+      },
+      initialState: { assetId: PUMP.id },
+    });
+    const user = userEvent.setup();
+
+    expect(await screen.findByText('No time series for this asset')).toBeInTheDocument();
+    expect(await screen.findByText('No activities for this asset')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(await screen.findByText('No files for this asset')).toBeInTheDocument();
+  });
+
+  it('keeps the other sections working when one section fails, and retries just that one', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<AppDeps['related']['listActivities']>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce([SEAL]);
+    renderApp({ related: { listActivities }, initialState: { assetId: PUMP.id } });
+    const user = userEvent.setup();
+
+    // Assert: the failed section shows an error, the rest still render
+    expect(await screen.findByText(/could not load activities/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'PUMP-101' })).toBeInTheDocument();
+    expect(await screen.findByText(/Latest: 4.2 bar/)).toBeInTheDocument();
+
+    // Act
+    await user.click(screen.getByRole('button', { name: /retry/i }));
+
+    // Assert
+    expect(await screen.findByText('Replace seal')).toBeInTheDocument();
+  });
+
+  it('restores the selected asset and tab from the saved state', async () => {
+    renderApp({ initialState: { assetId: PUMP.id, tab: 'files' } });
+
+    expect(await screen.findByRole('heading', { name: 'PUMP-101' })).toBeInTheDocument();
+    expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('ignores malformed saved state', async () => {
+    renderApp({ rawInitialState: '{broken' });
+
+    expect(await screen.findByText('Search for an asset to begin')).toBeInTheDocument();
+  });
+});
+
+type RenderOptions = {
+  assets?: Partial<AppDeps['assets']>;
+  related?: Partial<AppDeps['related']>;
+  initialState?: Record<string, unknown>;
+  rawInitialState?: string;
+};
+
+function renderApp({ assets, related, initialState, rawInitialState }: RenderOptions = {}) {
+  const api: AppApi = { syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)) };
+  const appDeps = makeDeps({
+    assets: { search: () => Promise.resolve([PUMP]), get: () => Promise.resolve(PUMP_DETAIL), ...assets },
+    related: {
+      listTimeSeries: () => Promise.resolve([PRESSURE]),
+      listActivities: () => Promise.resolve([SEAL]),
+      listFiles: () => Promise.resolve([PID]),
+      ...related,
+    },
+    datapoints: {
+      getLatest: () => Promise.resolve({ timestamp: 1000, value: 4.2 }),
+      getSeries: () => Promise.resolve([{ timestamp: 1000, value: 4.2 }]),
+    },
+  });
+  const state = rawInitialState ?? (initialState ? JSON.stringify(initialState) : undefined);
+
+  render(
+    <App
+      deps={makeSdkDeps()}
+      appDeps={appDeps}
+      connectToHostApp={() => Promise.resolve({ api, initialState: state })}
+    />,
+    { wrapper: makeQueryWrapper() }
+  );
+  return { api };
+}
+
+// main.tsx provides the QueryClient in the real app.
+function makeQueryWrapper(): ComponentType<{ children: ReactNode }> {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return function QueryWrapper({ children }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   };
 }
 
-function makeConnectedFn(api: AppApi = makeApi()) {
-  return vi.fn(() => Promise.resolve({ api }));
+async function searchAndSelect(user: ReturnType<typeof userEvent.setup>, text: string) {
+  await user.click(await screen.findByRole('combobox', { name: 'Asset' }));
+  await user.type(screen.getByPlaceholderText(/search by tag/i), text);
+  const option = await screen.findByRole('option', { name: /PUMP-101/ });
+  await user.click(within(option).getByText('PUMP-101'));
+  await waitFor(() => expect(screen.queryByRole('option')).not.toBeInTheDocument());
 }
 
-function makeDeps(): AppDeps {
+function makeSdkDeps(): SdkDeps {
   return {
-    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(() =>
+    connectToHostApp: vi.fn<SdkDeps['connectToHostApp']>(() =>
       Promise.resolve({
         api: {
           getProject: vi.fn<HostAppAPI['getProject']>(() => Promise.resolve('publicdatacdm')),
@@ -33,68 +196,6 @@ function makeDeps(): AppDeps {
         } as Partial<HostAppAPI> as HostAppAPI,
       })
     ),
-    createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
+    createClient: vi.fn<SdkDeps['createClient']>((config) => new CogniteClient(config)),
   };
 }
-
-function makeLoadingDeps(): AppDeps {
-  return {
-    connectToHostApp: vi.fn<AppDeps['connectToHostApp']>(() => new Promise<ConnectToHostAppResult>(() => undefined)),
-    createClient: vi.fn<AppDeps['createClient']>((config) => new CogniteClient(config)),
-  };
-}
-
-describe('App', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('renders loading state', () => {
-    render(<App deps={makeLoadingDeps()} connectToHostApp={() => new Promise<never>(() => undefined)} />);
-    expect(screen.getByText('Loading project...')).toBeInTheDocument();
-  });
-
-  it('renders splash with deployment targets and checklist copy', async () => {
-    render(<App deps={makeDeps()} connectToHostApp={makeConnectedFn()} />);
-    await waitFor(() => expect(screen.getByText('Welcome to Flows custom apps')).toBeInTheDocument());
-    expect(screen.getByText('App deployment checklist')).toBeInTheDocument();
-    expect(screen.getByText('Plan')).toBeInTheDocument();
-    expect(screen.getByText('Explore')).toBeInTheDocument();
-    expect(screen.getByText('Deploy')).toBeInTheDocument();
-    expect(screen.getByText('Support')).toBeInTheDocument();
-    expect(screen.getByText('Help & feedback')).toBeInTheDocument();
-    expect(screen.getByText('Your app will deploy to')).toBeInTheDocument();
-    expect(screen.getByText('org')).toBeInTheDocument();
-    expect(screen.getByText('and project')).toBeInTheDocument();
-    expect(screen.getByText('publicdata')).toBeInTheDocument();
-    expect(screen.getByText('publicdatacdm')).toBeInTheDocument();
-    expect(screen.getAllByText(/SPEC\.md/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/apps deploy --interactive/)).toBeInTheDocument();
-  });
-
-  it('syncs internal state when the open step changes', async () => {
-    const api = makeApi();
-    render(<App deps={makeDeps()} connectToHostApp={makeConnectedFn(api)} />);
-    await waitFor(() => expect(screen.getByText('App deployment checklist')).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText('Explore'));
-
-    expect(api.syncInternalState).toHaveBeenCalledWith(
-      JSON.stringify({ openStep: 'Explore' })
-    );
-  });
-
-  it('restores the open step from initial state', async () => {
-    const api = makeApi();
-    render(<App
-      deps={makeDeps()}
-      connectToHostApp={() => Promise.resolve({ api, initialState: JSON.stringify({ openStep: 'Deploy' }) })}
-    />);
-    await waitFor(() => expect(screen.getByText('App deployment checklist')).toBeInTheDocument());
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /deploy/i })).toHaveAttribute('aria-expanded', 'true')
-    );
-    expect(screen.getByRole('button', { name: /plan/i })).toHaveAttribute('aria-expanded', 'false');
-  });
-});
