@@ -117,7 +117,7 @@ describe(CdmRelatedDataService.name, () => {
     it('lists CogniteActivity whose assets contain the asset', async () => {
       vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
 
-      await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
+      await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
 
       expect(client.instances.list).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -127,32 +127,55 @@ describe(CdmRelatedDataService.name, () => {
       );
     });
 
-    it('parses timestamps and sorts most recent first, falling back to the scheduled start', async () => {
+    it('asks the API for the most recent first, by start then scheduled start, undated last', async () => {
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
+
+      await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
+
+      expect(client.instances.list).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: [
+            { property: ['cdf_cdm', 'CogniteActivity/v1', 'startTime'], direction: 'descending', nullsFirst: false },
+            { property: ['cdf_cdm', 'CogniteActivity/v1', 'scheduledStartTime'], direction: 'descending', nullsFirst: false },
+          ],
+        })
+      );
+    });
+
+    it('asks for one more than the limit, to learn whether there is more', async () => {
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
+
+      await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
+
+      expect(client.instances.list).toHaveBeenCalledWith(expect.objectContaining({ limit: 26 }));
+    });
+
+    it('keeps the order the API returned and parses timestamps', async () => {
       // Arrange
       vi.mocked(client.instances.list).mockResolvedValue(
         listResponse([
-          node('old', VIEWS.activity, { name: 'Old', startTime: '2026-01-01T00:00:00.000Z' }),
-          node('planned', VIEWS.activity, { name: 'Planned', scheduledStartTime: '2026-06-01T00:00:00.000Z' }),
           node('new', VIEWS.activity, {
             name: 'New',
             description: 'Seal change',
             startTime: '2026-09-01T00:00:00.000Z',
             endTime: '2026-09-02T00:00:00.000Z',
           }),
-          node('undated', VIEWS.activity, { name: 'Undated' }),
+          node('old', VIEWS.activity, { name: 'Old', startTime: '2026-01-01T00:00:00.000Z' }),
+          node('planned', VIEWS.activity, { name: 'Planned', scheduledStartTime: '2026-06-01T00:00:00.000Z' }),
         ])
       );
 
       // Act
-      const items = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
+      const { items } = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
 
       // Assert
-      expect(items.map((i) => i.name)).toEqual(['New', 'Planned', 'Old', 'Undated']);
+      expect(items.map((i) => i.name)).toEqual(['New', 'Old', 'Planned']);
       expect(items[0]).toMatchObject({
         description: 'Seal change',
         startTime: Date.parse('2026-09-01T00:00:00.000Z'),
         endTime: Date.parse('2026-09-02T00:00:00.000Z'),
       });
+      expect(items[2]).toMatchObject({ scheduledStartTime: Date.parse('2026-06-01T00:00:00.000Z') });
     });
 
     it('ignores unparseable timestamps', async () => {
@@ -160,22 +183,36 @@ describe(CdmRelatedDataService.name, () => {
         listResponse([node('a', VIEWS.activity, { name: 'A', startTime: 'not a date' })])
       );
 
-      const items = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
+      const { items } = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
 
       expect(items[0]?.startTime).toBeUndefined();
     });
 
-    it('returns at most 25 activities', async () => {
-      const many = Array.from({ length: 40 }, (_, i) => node(`a${i}`, VIEWS.activity, { name: `A${i}` }));
-      vi.mocked(client.instances.list).mockResolvedValue(listResponse(many));
+    it('has no more when the API returns no more than the limit', async () => {
+      const exact = Array.from({ length: 25 }, (_, i) => node(`a${i}`, VIEWS.activity, { name: `A${i}` }));
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse(exact));
 
-      expect(await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET)).toHaveLength(25);
+      const result = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
+
+      expect(result.items).toHaveLength(25);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('returns only the limit and reports more when the API returned the extra one', async () => {
+      const extra = Array.from({ length: 26 }, (_, i) => node(`a${i}`, VIEWS.activity, { name: `A${i}` }));
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse(extra));
+
+      const result = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25);
+
+      expect(result.items).toHaveLength(25);
+      expect(result.items[24]?.name).toBe('A24');
+      expect(result.hasMore).toBe(true);
     });
 
     it('propagates API errors', async () => {
       vi.mocked(client.instances.list).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmRelatedDataService(client, runImmediately).listActivities(ASSET)).rejects.toThrow('boom');
+      await expect(new CdmRelatedDataService(client, runImmediately).listActivities(ASSET, 25)).rejects.toThrow('boom');
     });
   });
 

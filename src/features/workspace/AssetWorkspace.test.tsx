@@ -17,7 +17,7 @@ function renderWorkspace(initialState: Record<string, unknown> = {}, activities:
     assets: { get: () => Promise.resolve({ id: ASSET, name: 'PUMP-101' }) },
     related: {
       listTimeSeries: () => Promise.resolve([PRESSURE]),
-      listActivities: () => Promise.resolve(activities),
+      listActivities: () => Promise.resolve({ items: activities, hasMore: false }),
       listFiles: () =>
         Promise.resolve([{ id: { space: 's', externalId: 'pid' }, name: 'P&ID.pdf', isUploaded: true }]),
     },

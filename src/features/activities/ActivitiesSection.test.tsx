@@ -1,9 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubLayoutSize } from '../../__mocks__/stubLayout';
 import { makeDeps, makeViewModelWrapper } from '../../__mocks__/viewModelWrapper';
-import type { ActivityItem, RelatedDataService } from '../../services/RelatedDataService';
+import type { ActivityItem, ActivityList, RelatedDataService } from '../../services/RelatedDataService';
 
 import { ActivitiesSection } from './ActivitiesSection';
 
@@ -34,14 +35,14 @@ describe(ActivitiesSection.name, () => {
   });
 
   it('shows a loading skeleton first', () => {
-    renderSection(() => new Promise<ActivityItem[]>(() => undefined));
+    renderSection(() => new Promise<ActivityList>(() => undefined));
 
     expect(screen.getByRole('status', { name: 'Loading activities' })).toBeInTheDocument();
   });
 
   it('lists activities in a table with their dates', async () => {
     // Arrange / Act
-    renderSection(() => Promise.resolve([SEAL, INSPECT]));
+    renderSection(() => Promise.resolve(list([SEAL, INSPECT])));
 
     // Assert
     expect(await screen.findByText('Replace seal')).toBeInTheDocument();
@@ -51,7 +52,7 @@ describe(ActivitiesSection.name, () => {
   });
 
   it('shows an empty state naming what is missing', async () => {
-    renderSection(() => Promise.resolve([]));
+    renderSection(() => Promise.resolve(list([])));
 
     expect(await screen.findByText('No activities for this asset')).toBeInTheDocument();
   });
@@ -61,7 +62,7 @@ describe(ActivitiesSection.name, () => {
     const listActivities = vi
       .fn<RelatedDataService['listActivities']>()
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce([SEAL]);
+      .mockResolvedValueOnce(list([SEAL]));
     renderSection(listActivities);
 
     // Act
@@ -70,4 +71,66 @@ describe(ActivitiesSection.name, () => {
     // Assert
     await waitFor(() => expect(screen.getByText('Replace seal')).toBeInTheDocument());
   });
+
+  it('has no Load more button when everything is shown', async () => {
+    renderSection(() => Promise.resolve(list([SEAL, INSPECT])));
+    await screen.findByText('Replace seal');
+
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  });
+
+  it('loads and shows more activities when Load more is pressed', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockResolvedValueOnce(list([SEAL, INSPECT]));
+    renderSection(listActivities);
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument());
+  });
+
+  it('disables the button while more are loading', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockReturnValueOnce(new Promise<ActivityList>(() => undefined));
+    renderSection(listActivities);
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByRole('button', { name: 'Loading more…' })).toBeDisabled();
+    expect(screen.getByText('Replace seal')).toBeInTheDocument();
+  });
+
+  it('says so when loading more fails, and lets the user try again', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(list([SEAL, INSPECT]));
+    renderSection(listActivities);
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('Could not load more activities.')).toBeInTheDocument();
+    expect(screen.getByText('Replace seal')).toBeInTheDocument();
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
+  });
 });
+
+function list(items: ActivityItem[], hasMore = false): ActivityList {
+  return { items, hasMore };
+}

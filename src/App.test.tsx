@@ -98,7 +98,7 @@ describe('App', () => {
     renderApp({
       related: {
         listTimeSeries: () => Promise.resolve([]),
-        listActivities: () => Promise.resolve([]),
+        listActivities: () => Promise.resolve({ items: [], hasMore: false }),
         listFiles: () => Promise.resolve([]),
       },
       initialState: { assetId: PUMP.id },
@@ -116,7 +116,7 @@ describe('App', () => {
     const listActivities = vi
       .fn<AppDeps['related']['listActivities']>()
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce([SEAL]);
+      .mockResolvedValueOnce({ items: [SEAL], hasMore: false });
     renderApp({ related: { listActivities }, initialState: { assetId: PUMP.id } });
     const user = userEvent.setup();
 
@@ -163,7 +163,7 @@ function renderApp({ assets, related, initialState, rawInitialState }: RenderOpt
     assets: { search: () => Promise.resolve([PUMP]), get: () => Promise.resolve(PUMP_DETAIL), ...assets },
     related: {
       listTimeSeries: () => Promise.resolve([PRESSURE]),
-      listActivities: () => Promise.resolve([SEAL]),
+      listActivities: () => Promise.resolve({ items: [SEAL], hasMore: false }),
       listFiles: () => Promise.resolve([PID]),
       ...related,
     },

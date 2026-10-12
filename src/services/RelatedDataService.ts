@@ -1,4 +1,4 @@
-import type { CogniteClient, FilterDefinition, NodeOrEdge } from '@cognite/sdk';
+import type { CogniteClient, FilterDefinition, NodeOrEdge, PropertySortV3 } from '@cognite/sdk';
 
 import { VIEWS, getViewProperties, type ViewRef } from '../config/model';
 import { readInstanceRef, readString, type InstanceRef } from '../lib/properties';
@@ -17,6 +17,9 @@ export type ActivityItem = {
   scheduledEndTime?: number;
 };
 
+/** The most recent activities, newest first. `hasMore` is true when older ones exist beyond `items`. */
+export type ActivityList = { items: ActivityItem[]; hasMore: boolean };
+
 export type FileItem = {
   id: InstanceRef;
   name: string;
@@ -27,7 +30,11 @@ export type FileItem = {
 
 export interface RelatedDataService {
   listTimeSeries(asset: InstanceRef): Promise<TimeSeriesItem[]>;
-  listActivities(asset: InstanceRef): Promise<ActivityItem[]>;
+  /**
+   * The `limit` most recent activities. Sorted by the API. DMS cannot page a custom sort without a
+   * cursorable index, so callers see more by asking again with a larger limit.
+   */
+  listActivities(asset: InstanceRef, limit: number): Promise<ActivityList>;
   listFiles(asset: InstanceRef): Promise<FileItem[]>;
 }
 
@@ -35,7 +42,6 @@ export interface RelatedDataService {
 export type RelatedDataClient = { instances: Pick<CogniteClient['instances'], 'list' | 'retrieve'> };
 
 const LIST_LIMIT = 100;
-const ACTIVITY_LIMIT = 25;
 
 export class CdmRelatedDataService implements RelatedDataService {
   constructor(
@@ -44,7 +50,7 @@ export class CdmRelatedDataService implements RelatedDataService {
   ) {}
 
   async listTimeSeries(asset: InstanceRef): Promise<TimeSeriesItem[]> {
-    const nodes = await this.listByAsset(VIEWS.timeSeries, asset);
+    const nodes = await this.listByAsset(VIEWS.timeSeries, asset, LIST_LIMIT);
     const unitRefs = uniqueRefs(nodes.map((node) => readInstanceRef(getViewProperties(node, VIEWS.timeSeries), 'unit')));
     const unitSymbols = await this.resolveUnitSymbols(unitRefs);
 
@@ -60,27 +66,26 @@ export class CdmRelatedDataService implements RelatedDataService {
     });
   }
 
-  async listActivities(asset: InstanceRef): Promise<ActivityItem[]> {
-    const nodes = await this.listByAsset(VIEWS.activity, asset);
-    return nodes
-      .map((node): ActivityItem => {
-        const properties = getViewProperties(node, VIEWS.activity);
-        return {
-          id: toRef(node),
-          name: readString(properties, 'name') ?? node.externalId,
-          description: readString(properties, 'description'),
-          startTime: readTime(properties, 'startTime'),
-          endTime: readTime(properties, 'endTime'),
-          scheduledStartTime: readTime(properties, 'scheduledStartTime'),
-          scheduledEndTime: readTime(properties, 'scheduledEndTime'),
-        };
-      })
-      .sort((a, b) => sortTime(b) - sortTime(a))
-      .slice(0, ACTIVITY_LIMIT);
+  async listActivities(asset: InstanceRef, limit: number): Promise<ActivityList> {
+    // One extra row tells us whether there is more without a second request.
+    const nodes = await this.listByAsset(VIEWS.activity, asset, limit + 1, newestFirst(VIEWS.activity));
+    const items = nodes.slice(0, limit).map((node): ActivityItem => {
+      const properties = getViewProperties(node, VIEWS.activity);
+      return {
+        id: toRef(node),
+        name: readString(properties, 'name') ?? node.externalId,
+        description: readString(properties, 'description'),
+        startTime: readTime(properties, 'startTime'),
+        endTime: readTime(properties, 'endTime'),
+        scheduledStartTime: readTime(properties, 'scheduledStartTime'),
+        scheduledEndTime: readTime(properties, 'scheduledEndTime'),
+      };
+    });
+    return { items, hasMore: nodes.length > limit };
   }
 
   async listFiles(asset: InstanceRef): Promise<FileItem[]> {
-    const nodes = await this.listByAsset(VIEWS.file, asset);
+    const nodes = await this.listByAsset(VIEWS.file, asset, LIST_LIMIT);
     return nodes.map((node) => {
       const properties = getViewProperties(node, VIEWS.file);
       return {
@@ -94,7 +99,12 @@ export class CdmRelatedDataService implements RelatedDataService {
   }
 
   /** Nodes of `view` whose `assets` direct-relation list contains the asset. */
-  private async listByAsset(view: ViewRef, asset: InstanceRef): Promise<NodeOrEdge[]> {
+  private async listByAsset(
+    view: ViewRef,
+    asset: InstanceRef,
+    limit: number,
+    sort?: PropertySortV3[]
+  ): Promise<NodeOrEdge[]> {
     const filter: FilterDefinition = {
       containsAny: { property: [view.space, `${view.externalId}/${view.version}`, 'assets'], values: [asset] },
     };
@@ -103,7 +113,8 @@ export class CdmRelatedDataService implements RelatedDataService {
         instanceType: 'node',
         sources: [{ source: view }],
         filter,
-        limit: LIST_LIMIT,
+        sort,
+        limit,
       })
     );
     return items;
@@ -154,9 +165,14 @@ function readTime(properties: Parameters<typeof readString>[0], key: string): nu
   return Number.isNaN(time) ? undefined : time;
 }
 
-/** Most recent first; activities with no dates sort last. */
-function sortTime(activity: ActivityItem): number {
-  return activity.startTime ?? activity.scheduledStartTime ?? 0;
+/** Started activities by start time, then ones that never started by scheduled start; undated last. */
+function newestFirst(view: ViewRef): PropertySortV3[] {
+  const sortBy = (property: string): PropertySortV3 => ({
+    property: [view.space, `${view.externalId}/${view.version}`, property],
+    direction: 'descending',
+    nullsFirst: false,
+  });
+  return [sortBy('startTime'), sortBy('scheduledStartTime')];
 }
 
 /** The only way other modules get the implementation. */
