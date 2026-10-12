@@ -11,10 +11,22 @@ import { useActivitiesViewModel } from './useActivitiesViewModel';
 const COLUMNS: ColumnDef<ActivityItem>[] = [
   { id: 'name', header: 'Name', accessorFn: (row) => row.name },
   { id: 'description', header: 'Description', accessorFn: (row) => row.description ?? '' },
-  { id: 'scheduled', header: 'Scheduled start', accessorFn: (row) => formatDateTime(row.scheduledStartTime) },
-  { id: 'start', header: 'Started', accessorFn: (row) => formatDateTime(row.startTime) },
-  { id: 'end', header: 'Ended', accessorFn: (row) => formatDateTime(row.endTime) },
+  dateColumn('scheduled', 'Scheduled start', (row) => row.scheduledStartTime),
+  dateColumn('start', 'Started', (row) => row.startTime),
+  dateColumn('end', 'Ended', (row) => row.endTime),
 ];
+
+/** Sorts on the time itself, since the formatted text ("Dec 8, 2015") would sort alphabetically. */
+function dateColumn(id: string, header: string, time: (row: ActivityItem) => number | undefined): ColumnDef<ActivityItem> {
+  return {
+    id,
+    header,
+    accessorFn: time,
+    cell: ({ row }) => formatDateTime(time(row.original)),
+    // Activities with no date stay at the bottom whichever way the column is sorted.
+    sortUndefined: 'last',
+  };
+}
 
 export function ActivitiesSection() {
   const { status, activities, hasMore, loadMore, isLoadingMore, loadMoreFailed, retry } = useActivitiesViewModel();

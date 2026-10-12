@@ -129,8 +129,59 @@ describe(ActivitiesSection.name, () => {
     // Assert
     expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
   });
+
+  describe('sorting by a date column', () => {
+    // Dates are shown formatted ("Dec 8, 2015"), so sorting on that text would put December before
+    // September. The grid must sort on the time itself.
+    const DATE_COLUMNS = [
+      ['Scheduled start', 'scheduledStartTime'],
+      ['Started', 'startTime'],
+      ['Ended', 'endTime'],
+    ] as const;
+
+    // Task A is dated Dec 2015, B has no date, C Sep 2012, D Oct 2014, E Nov 2013.
+    const OLDEST_FIRST = 'Task C,Task E,Task D,Task A,Task B';
+    const NEWEST_FIRST = 'Task A,Task D,Task E,Task C,Task B';
+
+    it.each(DATE_COLUMNS)('sorts %s by time, and keeps activities without a date last', async (header, field) => {
+      // Arrange: in the order the API would return them, so a sort has to change something
+      renderSection(() =>
+        Promise.resolve(
+          list([
+            dated('Task A', field, Date.UTC(2015, 11, 8)),
+            dated('Task B', field, undefined),
+            dated('Task C', field, Date.UTC(2012, 8, 13)),
+            dated('Task D', field, Date.UTC(2014, 9, 30)),
+            dated('Task E', field, Date.UTC(2013, 10, 6)),
+          ])
+        )
+      );
+      await screen.findByText('Task A');
+
+      // Act
+      await userEvent.click(screen.getByRole('columnheader', { name: header }));
+      const afterFirstClick = rowNames();
+      await userEvent.click(screen.getByRole('columnheader', { name: header }));
+      const afterSecondClick = rowNames();
+
+      // Assert: the two clicks give the two directions, whichever comes first, and never the text order
+      expect([afterFirstClick, afterSecondClick].sort()).toEqual([NEWEST_FIRST, OLDEST_FIRST].sort());
+    });
+  });
 });
 
 function list(items: ActivityItem[], hasMore = false): ActivityList {
   return { items, hasMore };
+}
+
+function dated(name: string, field: 'scheduledStartTime' | 'startTime' | 'endTime', time: number | undefined): ActivityItem {
+  return { id: { space: 's', externalId: name }, name, [field]: time };
+}
+
+/** The activity names in the order the table shows them. */
+function rowNames(): string {
+  return screen
+    .getAllByRole('row')
+    .flatMap((row) => /Task [A-E]/.exec(row.textContent ?? '') ?? [])
+    .join();
 }
