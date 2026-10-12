@@ -8,6 +8,7 @@ import { useAppState } from './useAppState';
 const ASSET = { space: 'instances-space', externalId: 'pump-101' };
 const SERIES = { space: 'instances-space', externalId: 'pump-101-pressure' };
 const FILE = { space: 'instances-space', externalId: 'pid.pdf' };
+const ACTIVITY = { space: 'instances-space', externalId: 'wo-1' };
 
 describe(AppStateProvider.name, () => {
   let api: AppStateApi;
@@ -19,12 +20,26 @@ describe(AppStateProvider.name, () => {
   it('starts from the default state when there is no initial state', () => {
     const { result } = renderHook(() => useAppState(), { wrapper: makeWrapper(api) });
 
-    expect(result.current.state).toEqual({ query: '', assetId: null, timeSeriesId: null, fileId: null, tab: 'activities' });
+    expect(result.current.state).toEqual({
+      query: '',
+      assetId: null,
+      timeSeriesId: null,
+      fileId: null,
+      activityId: null,
+      tab: 'activities',
+    });
   });
 
   it('seeds its state from the initial state', () => {
     // Arrange
-    const initialState = JSON.stringify({ query: 'pump', assetId: ASSET, timeSeriesId: SERIES, fileId: FILE, tab: 'files' });
+    const initialState = JSON.stringify({
+      query: 'pump',
+      assetId: ASSET,
+      timeSeriesId: SERIES,
+      fileId: FILE,
+      activityId: ACTIVITY,
+      tab: 'files',
+    });
 
     // Act
     const { result } = renderHook(() => useAppState(), { wrapper: makeWrapper(api, initialState) });
@@ -35,6 +50,7 @@ describe(AppStateProvider.name, () => {
       assetId: ASSET,
       timeSeriesId: SERIES,
       fileId: FILE,
+      activityId: ACTIVITY,
       tab: 'files',
     });
   });
@@ -55,14 +71,21 @@ describe(AppStateProvider.name, () => {
     // Assert
     expect(result.current.state.query).toBe('PUMP-101');
     expect(api.syncInternalState).toHaveBeenCalledWith(
-      JSON.stringify({ query: 'PUMP-101', assetId: null, timeSeriesId: null, fileId: null, tab: 'activities' })
+      JSON.stringify({
+        query: 'PUMP-101',
+        assetId: null,
+        timeSeriesId: null,
+        fileId: null,
+        activityId: null,
+        tab: 'activities',
+      })
     );
   });
 
-  it('selecting an asset clears the selected time series and file', () => {
+  it('selecting an asset clears the selected time series, file and activity', () => {
     // Arrange
     const { result } = renderHook(() => useAppState(), {
-      wrapper: makeWrapper(api, JSON.stringify({ query: 'pump', assetId: ASSET, timeSeriesId: SERIES, fileId: FILE })),
+      wrapper: makeWrapper(api, JSON.stringify({ query: 'pump', assetId: ASSET, timeSeriesId: SERIES, fileId: FILE, activityId: ACTIVITY })),
     });
     const other = { space: 'instances-space', externalId: 'pump-102' };
 
@@ -75,10 +98,18 @@ describe(AppStateProvider.name, () => {
       assetId: other,
       timeSeriesId: null,
       fileId: null,
+      activityId: null,
       tab: 'activities',
     });
     expect(api.syncInternalState).toHaveBeenCalledWith(
-      JSON.stringify({ query: 'pump', assetId: other, timeSeriesId: null, fileId: null, tab: 'activities' })
+      JSON.stringify({
+        query: 'pump',
+        assetId: other,
+        timeSeriesId: null,
+        fileId: null,
+        activityId: null,
+        tab: 'activities',
+      })
     );
   });
 
@@ -105,6 +136,20 @@ describe(AppStateProvider.name, () => {
 
     // Assert
     expect(result.current.state.fileId).toBeNull();
+    expect(api.syncInternalState).toHaveBeenCalledTimes(2);
+  });
+
+  it('selects an activity and syncs it, and clears it with null', () => {
+    // Arrange
+    const { result } = renderHook(() => useAppState(), { wrapper: makeWrapper(api) });
+
+    // Act
+    act(() => result.current.selectActivity(ACTIVITY));
+    expect(result.current.state.activityId).toEqual(ACTIVITY);
+    act(() => result.current.selectActivity(null));
+
+    // Assert
+    expect(result.current.state.activityId).toBeNull();
     expect(api.syncInternalState).toHaveBeenCalledTimes(2);
   });
 

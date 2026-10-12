@@ -5,6 +5,7 @@ import { DEFAULT_APP_STATE, parseAppState, serializeAppState, type AppState } fr
 const ASSET = { space: 'instances-space', externalId: 'pump-101' };
 const SERIES = { space: 'instances-space', externalId: 'pump-101-pressure' };
 const FILE = { space: 'instances-space', externalId: 'pid.pdf' };
+const ACTIVITY = { space: 'instances-space', externalId: 'wo-1' };
 
 describe(parseAppState.name, () => {
   it('returns the default state when there is no initial state', () => {
@@ -14,7 +15,14 @@ describe(parseAppState.name, () => {
 
   it('restores a full state', () => {
     // Arrange
-    const state: AppState = { query: 'pump', assetId: ASSET, timeSeriesId: SERIES, fileId: FILE, tab: 'files' };
+    const state: AppState = {
+      query: 'pump',
+      assetId: ASSET,
+      timeSeriesId: SERIES,
+      fileId: FILE,
+      activityId: ACTIVITY,
+      tab: 'files',
+    };
 
     // Act / Assert
     expect(parseAppState(JSON.stringify(state))).toEqual(state);
@@ -35,7 +43,18 @@ describe(parseAppState.name, () => {
     const saved = JSON.stringify({ query: 7, assetId: { space: 'x' }, timeSeriesId: SERIES });
 
     // Act / Assert
-    expect(parseAppState(saved)).toEqual({ query: '', assetId: null, timeSeriesId: SERIES, fileId: null, tab: 'activities' });
+    expect(parseAppState(saved)).toEqual({
+      query: '',
+      assetId: null,
+      timeSeriesId: SERIES,
+      fileId: null,
+      activityId: null,
+      tab: 'activities',
+    });
+  });
+
+  it('defaults an incomplete saved activity', () => {
+    expect(parseAppState(JSON.stringify({ activityId: { space: 'x' } })).activityId).toBeNull();
   });
 
   it('defaults an unknown tab', () => {
@@ -52,7 +71,14 @@ describe(parseAppState.name, () => {
 
 describe(serializeAppState.name, () => {
   it('round-trips through parseAppState', () => {
-    const state: AppState = { query: 'pump 101', assetId: ASSET, timeSeriesId: null, fileId: FILE, tab: 'files' };
+    const state: AppState = {
+      query: 'pump 101',
+      assetId: ASSET,
+      timeSeriesId: null,
+      fileId: FILE,
+      activityId: ACTIVITY,
+      tab: 'files',
+    };
 
     expect(parseAppState(serializeAppState(state))).toEqual(state);
   });

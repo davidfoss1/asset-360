@@ -36,9 +36,10 @@ export function AppStateProvider({ api, initialState, children }: AppStateProvid
     () => ({
       state,
       setQuery: (query: string) => update({ query }),
-      selectAsset: (assetId: InstanceRef | null) => update({ assetId, timeSeriesId: null, fileId: null }),
+      selectAsset: (assetId: InstanceRef | null) => update({ assetId, timeSeriesId: null, fileId: null, activityId: null }),
       selectTimeSeries: (timeSeriesId: InstanceRef | null) => update({ timeSeriesId }),
       selectFile: (fileId: InstanceRef | null) => update({ fileId }),
+      selectActivity: (activityId: InstanceRef | null) => update({ activityId }),
       selectTab: (tab: AssetTab) => update({ tab }),
     }),
     [state, update]

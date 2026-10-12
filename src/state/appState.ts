@@ -12,10 +12,11 @@ export type AppState = {
   assetId: InstanceRef | null;
   timeSeriesId: InstanceRef | null;
   fileId: InstanceRef | null;
+  activityId: InstanceRef | null;
   tab: AssetTab;
 };
 
-export const DEFAULT_APP_STATE: AppState = { query: '', assetId: null, timeSeriesId: null, fileId: null, tab: 'activities' };
+export const DEFAULT_APP_STATE: AppState = { query: '', assetId: null, timeSeriesId: null, fileId: null, activityId: null, tab: 'activities' };
 
 /**
  * Restores state from the host-provided `initialState` string. The host never validates it, so
@@ -37,6 +38,7 @@ export function parseAppState(initialState: string | undefined): AppState {
     assetId: 'assetId' in parsed && isInstanceRef(parsed.assetId) ? toRef(parsed.assetId) : null,
     timeSeriesId: 'timeSeriesId' in parsed && isInstanceRef(parsed.timeSeriesId) ? toRef(parsed.timeSeriesId) : null,
     fileId: 'fileId' in parsed && isInstanceRef(parsed.fileId) ? toRef(parsed.fileId) : null,
+    activityId: 'activityId' in parsed && isInstanceRef(parsed.activityId) ? toRef(parsed.activityId) : null,
     tab: 'tab' in parsed && isAssetTab(parsed.tab) ? parsed.tab : DEFAULT_APP_STATE.tab,
   };
 }
