@@ -19,10 +19,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-  optimizeDeps: {
-    // Pre-bundling pdfjs-dist breaks its worker.
-    exclude: ['pdfjs-dist'],
-  },
   server: {
     port: 3001,
   },

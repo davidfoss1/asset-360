@@ -34,8 +34,7 @@ const noUnusedVarsOptions = {
 
 export default tseslint.config(
   {
-    // src/cognite-file-viewer is vendored from the integrate-file-viewer skill.
-    ignores: ['dist', 'build', '.next', 'coverage', '*.min.js', '.agents', '.cursor', '.claude', 'src/cognite-file-viewer'],
+    ignores: ['dist', 'build', '.next', 'coverage', '*.min.js', '.agents', '.cursor', '.claude'],
   },
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
