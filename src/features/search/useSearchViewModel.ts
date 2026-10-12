@@ -11,6 +11,8 @@ export type SearchViewModel = {
   setQuery: (query: string) => void;
   status: LoadStatus;
   results: AssetSummary[];
+  /** The results were cut short, so there may be more matches than shown. */
+  limited: boolean;
   selectedAssetId: InstanceRef | null;
   selectAsset: (assetId: InstanceRef) => void;
   retry: () => void;
@@ -30,8 +32,9 @@ export function useSearchViewModel(): SearchViewModel {
   return {
     query: state.query,
     setQuery,
-    status: toLoadStatus(search, (results) => results.length === 0),
-    results: search.data ?? [],
+    status: toLoadStatus(search, (found) => found.items.length === 0),
+    results: search.data?.items ?? [],
+    limited: search.data?.limited ?? false,
     selectedAssetId: state.assetId,
     selectAsset,
     retry: () => void search.refetch(),

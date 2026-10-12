@@ -85,7 +85,7 @@ describe('App', () => {
   });
 
   it('shows a no-results state when nothing matches', async () => {
-    renderApp({ assets: { search: () => Promise.resolve([]) } });
+    renderApp({ assets: { search: () => Promise.resolve({ items: [], limited: false }) } });
     const user = userEvent.setup();
 
     await user.click(await screen.findByRole('combobox', { name: 'Asset' }));
@@ -160,7 +160,7 @@ function renderApp({ assets, related, initialState, rawInitialState }: RenderOpt
     navigateExternal: vi.fn<HostAppAPI['navigateExternal']>(() => Promise.resolve(true)),
   };
   const appDeps = makeDeps({
-    assets: { search: () => Promise.resolve([PUMP]), get: () => Promise.resolve(PUMP_DETAIL), ...assets },
+    assets: { search: () => Promise.resolve({ items: [PUMP], limited: false }), get: () => Promise.resolve(PUMP_DETAIL), ...assets },
     related: {
       listTimeSeries: () => Promise.resolve([PRESSURE]),
       listActivities: () => Promise.resolve({ items: [SEAL], hasMore: false }),

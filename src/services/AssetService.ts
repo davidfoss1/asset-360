@@ -11,6 +11,9 @@ import type { TaskRunner } from '../lib/taskRunner';
 
 export type AssetSummary = { id: InstanceRef; name: string; description?: string };
 
+/** `limited`: the API returned as many results as it can and cannot page, so there may be more matches. */
+export type AssetSearchResult = { items: AssetSummary[]; limited: boolean };
+
 export type AssetDetail = AssetSummary & {
   parentName?: string;
   assetClass?: string;
@@ -18,7 +21,7 @@ export type AssetDetail = AssetSummary & {
 };
 
 export interface AssetService {
-  search(query: string): Promise<AssetSummary[]>;
+  search(query: string): Promise<AssetSearchResult>;
   get(id: InstanceRef): Promise<AssetDetail | undefined>;
 }
 
@@ -34,9 +37,9 @@ export class CdmAssetService implements AssetService {
     private readonly run: TaskRunner
   ) {}
 
-  async search(query: string): Promise<AssetSummary[]> {
+  async search(query: string): Promise<AssetSearchResult> {
     const tokens = tokenize(query);
-    if (tokens.length === 0) return [];
+    if (tokens.length === 0) return { items: [], limited: false };
 
     const { items } = await this.run(() =>
       this.client.instances.search({
@@ -49,7 +52,11 @@ export class CdmAssetService implements AssetService {
 
     // The SDK search request has no `operator`, and the API default is changing from OR to AND
     // (Nov 2026). Enforce AND here so behaviour is the same either side of the change.
-    return items.filter((node) => matchesAllTokens(node, tokens)).map(toSummary);
+    return {
+      items: items.filter((node) => matchesAllTokens(node, tokens)).map(toSummary),
+      // The SDK's search has no cursor, so a full response is the only sign of more.
+      limited: items.length >= SEARCH_LIMIT,
+    };
   }
 
   async get(id: InstanceRef): Promise<AssetDetail | undefined> {

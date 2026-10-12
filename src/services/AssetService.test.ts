@@ -42,13 +42,13 @@ describe(CdmAssetService.name, () => {
       );
 
       // Act
-      const results = await new CdmAssetService(client, runImmediately).search('pump');
+      const { items } = await new CdmAssetService(client, runImmediately).search('pump');
 
       // Assert
       expect(client.instances.search).toHaveBeenCalledWith(
         expect.objectContaining({ view: VIEWS.asset, query: 'pump', properties: ['name', 'description', 'aliases'] })
       );
-      expect(results).toEqual([
+      expect(items).toEqual([
         { id: { space: 'instances-space', externalId: 'pump-101' }, name: 'PUMP-101', description: 'Feed pump' },
       ]);
     });
@@ -56,7 +56,7 @@ describe(CdmAssetService.name, () => {
     it('does not call the API for a blank query', async () => {
       const results = await new CdmAssetService(client, runImmediately).search('   ');
 
-      expect(results).toEqual([]);
+      expect(results).toEqual({ items: [], limited: false });
       expect(client.instances.search).not.toHaveBeenCalled();
     });
 
@@ -72,18 +72,39 @@ describe(CdmAssetService.name, () => {
       );
 
       // Act
-      const results = await new CdmAssetService(client, runImmediately).search('PUMP 101');
+      const { items } = await new CdmAssetService(client, runImmediately).search('PUMP 101');
 
       // Assert
-      expect(results.map((r) => r.id.externalId)).toEqual(['a', 'c', 'd']);
+      expect(items.map((r) => r.id.externalId)).toEqual(['a', 'c', 'd']);
+    });
+
+    it('is not limited when the API returned fewer results than it can', async () => {
+      vi.mocked(client.instances.search).mockResolvedValue(response([assetNode('a', { name: 'Pump' })]));
+
+      const result = await new CdmAssetService(client, runImmediately).search('pump');
+
+      expect(result.limited).toBe(false);
+    });
+
+    it('is limited when the API returned as many results as it can, since it cannot page', async () => {
+      // Arrange: none of these match every token, so none survive the local filter
+      const full = Array.from({ length: 50 }, (_, i) => assetNode(`a${i}`, { name: `Tank ${i}` }));
+      vi.mocked(client.instances.search).mockResolvedValue(response(full));
+
+      // Act
+      const result = await new CdmAssetService(client, runImmediately).search('pump 101');
+
+      // Assert
+      expect(result.limited).toBe(true);
+      expect(result.items).toEqual([]);
     });
 
     it('falls back to the externalId when an asset has no name', async () => {
       vi.mocked(client.instances.search).mockResolvedValue(response([assetNode('x-1', { description: 'tag x-1' })]));
 
-      const results = await new CdmAssetService(client, runImmediately).search('x-1');
+      const { items } = await new CdmAssetService(client, runImmediately).search('x-1');
 
-      expect(results[0]?.name).toBe('x-1');
+      expect(items[0]?.name).toBe('x-1');
     });
 
     it('propagates API errors', async () => {

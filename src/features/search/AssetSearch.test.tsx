@@ -21,7 +21,7 @@ describe(AssetSearch.name, () => {
   });
 
   function renderSearch(options: { search?: AssetService['search']; initialState?: Record<string, unknown> } = {}) {
-    const search = options.search ?? vi.fn<AssetService['search']>(() => Promise.resolve([PUMP, TANK]));
+    const search = options.search ?? vi.fn<AssetService['search']>(() => Promise.resolve({ items: [PUMP, TANK], limited: false }));
     const get = vi.fn<AssetService['get']>(() => Promise.resolve(PUMP_DETAIL));
     const deps = makeDeps({ assets: { search, get } });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -75,7 +75,7 @@ describe(AssetSearch.name, () => {
   });
 
   it('shows an empty message when nothing matches', async () => {
-    const { user } = renderSearch({ search: () => Promise.resolve([]), initialState: { query: 'zzz' } });
+    const { user } = renderSearch({ search: () => Promise.resolve({ items: [], limited: false }), initialState: { query: 'zzz' } });
     await user.click(screen.getByRole('combobox'));
 
     expect(await screen.findByText(/no assets match/i)).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe(AssetSearch.name, () => {
 
   it('shows an error with retry when the search fails', async () => {
     // Arrange
-    const search = vi.fn<AssetService['search']>().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce([PUMP]);
+    const search = vi.fn<AssetService['search']>().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce({ items: [PUMP], limited: false });
     const { user } = renderSearch({ search, initialState: { query: 'pump' } });
     await user.click(screen.getByRole('combobox'));
     await user.click(await screen.findByRole('button', { name: /retry/i }));
@@ -91,5 +91,39 @@ describe(AssetSearch.name, () => {
     // Assert
     expect(await screen.findByRole('option', { name: /PUMP-101/ })).toBeInTheDocument();
     expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks the user to refine the search when the results were cut short', async () => {
+    // Arrange
+    const search = () => Promise.resolve({ items: [PUMP, TANK], limited: true });
+    const { user } = renderSearch({ search, initialState: { query: 'pump' } });
+
+    // Act
+    await user.click(screen.getByRole('combobox'));
+
+    // Assert
+    expect(await screen.findByRole('option', { name: /PUMP-101/ })).toBeInTheDocument();
+    expect(screen.getByText(/refine your search/i)).toBeInTheDocument();
+  });
+
+  it('does not ask for a narrower search when all results are shown', async () => {
+    const { user } = renderSearch({ initialState: { query: 'pump' } });
+
+    await user.click(screen.getByRole('combobox'));
+
+    await screen.findByRole('option', { name: /PUMP-101/ });
+    expect(screen.queryByText(/refine your search/i)).not.toBeInTheDocument();
+  });
+
+  it('explains that the top results had no match when none of a cut-short search matched', async () => {
+    const { user } = renderSearch({
+      search: () => Promise.resolve({ items: [], limited: true }),
+      initialState: { query: 'pump 101' },
+    });
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(await screen.findByText(/refine your search/i)).toBeInTheDocument();
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
   });
 });

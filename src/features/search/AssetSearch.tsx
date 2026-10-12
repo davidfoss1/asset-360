@@ -26,7 +26,7 @@ type AssetSearchProps = {
  * because Combobox filters a fixed option list on the client, while this searches CDF as you type.
  */
 export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
-  const { query, setQuery, status, results, selectAsset, retry } = useSearchViewModel();
+  const { query, setQuery, status, results, limited, selectAsset, retry } = useSearchViewModel();
   const { asset } = useAssetViewModel();
 
   // Open/closed and the text being typed are transient; only the committed query is host-synced.
@@ -64,7 +64,13 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
                 <Loader size={20} />
               </div>
             ) : null}
-            {status === 'empty' ? <p className="p-3 text-sm text-muted-foreground">No assets match your search.</p> : null}
+            {status === 'empty' ? (
+              <p className="p-3 text-sm text-muted-foreground">
+                {limited
+                  ? 'None of the top results match. Refine your search to find it.'
+                  : 'No assets match your search.'}
+              </p>
+            ) : null}
             {status === 'error' ? (
               <Alert variant="error">
                 <AlertTitle>Search failed</AlertTitle>
@@ -93,6 +99,11 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
                   </CommandItem>
                 ))}
               </CommandGroup>
+            ) : null}
+            {status === 'success' && limited ? (
+              <p className="border-t p-3 text-xs text-muted-foreground">
+                Showing the first matches only. Refine your search to narrow them.
+              </p>
             ) : null}
           </CommandList>
         </Command>

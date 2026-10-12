@@ -24,7 +24,7 @@ describe(useSearchViewModel.name, () => {
 
   it('loads, then exposes results for the restored query', async () => {
     // Arrange
-    const search = vi.fn<AssetService['search']>(() => Promise.resolve([PUMP]));
+    const search = vi.fn<AssetService['search']>(() => Promise.resolve({ items: [PUMP], limited: false }));
     const deps = makeDeps({ assets: { search } });
 
     // Act
@@ -39,9 +39,26 @@ describe(useSearchViewModel.name, () => {
     expect(search).toHaveBeenCalledWith('pump');
   });
 
+  it('says when the results were cut short, so the user can refine the search', async () => {
+    const deps = makeDeps({ assets: { search: () => Promise.resolve({ items: [PUMP], limited: true }) } });
+
+    const { result } = renderHook(() => useSearchViewModel(), {
+      wrapper: makeViewModelWrapper({ deps, initialState: { query: 'pump' } }),
+    });
+
+    await waitFor(() => expect(result.current.status).toBe('success'));
+    expect(result.current.limited).toBe(true);
+  });
+
+  it('is not limited before there are results', () => {
+    const { result } = renderHook(() => useSearchViewModel(), { wrapper: makeViewModelWrapper({ deps: makeDeps() }) });
+
+    expect(result.current.limited).toBe(false);
+  });
+
   it('searches with the trimmed query when the user types', async () => {
     // Arrange
-    const search = vi.fn<AssetService['search']>(() => Promise.resolve([PUMP]));
+    const search = vi.fn<AssetService['search']>(() => Promise.resolve({ items: [PUMP], limited: false }));
     const { result } = renderHook(() => useSearchViewModel(), {
       wrapper: makeViewModelWrapper({ deps: makeDeps({ assets: { search } }) }),
     });
@@ -55,7 +72,7 @@ describe(useSearchViewModel.name, () => {
   });
 
   it('reports empty when nothing matches', async () => {
-    const deps = makeDeps({ assets: { search: () => Promise.resolve([]) } });
+    const deps = makeDeps({ assets: { search: () => Promise.resolve({ items: [], limited: false }) } });
 
     const { result } = renderHook(() => useSearchViewModel(), {
       wrapper: makeViewModelWrapper({ deps, initialState: { query: 'zzz' } }),
@@ -69,7 +86,7 @@ describe(useSearchViewModel.name, () => {
     const search = vi
       .fn<AssetService['search']>()
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce([PUMP]);
+      .mockResolvedValueOnce({ items: [PUMP], limited: false });
     const { result } = renderHook(() => useSearchViewModel(), {
       wrapper: makeViewModelWrapper({ deps: makeDeps({ assets: { search } }), initialState: { query: 'pump' } }),
     });
