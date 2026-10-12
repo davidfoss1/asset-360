@@ -18,9 +18,12 @@ const SEAL: ActivityItem = {
 };
 const INSPECT: ActivityItem = { id: { space: 's', externalId: 'wo-2' }, name: 'Inspect bearings' };
 
-function renderSection(listActivities: RelatedDataService['listActivities']) {
+function renderSection(
+  listActivities: RelatedDataService['listActivities'],
+  initialState: Record<string, unknown> = { assetId: ASSET }
+) {
   const deps = makeDeps({ related: { listActivities } });
-  render(<ActivitiesSection />, { wrapper: makeViewModelWrapper({ deps, initialState: { assetId: ASSET } }) });
+  render(<ActivitiesSection />, { wrapper: makeViewModelWrapper({ deps, initialState }) });
 }
 
 describe(ActivitiesSection.name, () => {
@@ -128,6 +131,86 @@ describe(ActivitiesSection.name, () => {
 
     // Assert
     expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
+  });
+
+  describe('opening an activity', () => {
+    const LONG_DESCRIPTION = 'Mechanical seal leaking on the drive end; replace and pressure test before restart.';
+    const WITH_DETAIL: ActivityItem = { ...SEAL, description: LONG_DESCRIPTION };
+
+    it('shows the full activity when its row is clicked, in place of the table', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL, INSPECT])));
+
+      // Act
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+      expect(screen.getByText(LONG_DESCRIPTION)).toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: 'Activities' })).not.toBeInTheDocument();
+    });
+
+    it('opens the activity from the keyboard too', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL])));
+      const row = (await screen.findByText('Replace seal')).closest('[role="row"]');
+      if (!(row instanceof HTMLElement)) throw new Error('row not found');
+
+      // Act
+      row.focus();
+      await userEvent.keyboard('{Enter}');
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+    });
+
+    it('goes back to the table with the Back button', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL, INSPECT])));
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      // Act
+      await userEvent.click(await screen.findByRole('button', { name: 'Back to activities' }));
+
+      // Assert
+      expect(await screen.findByRole('table', { name: 'Activities' })).toBeInTheDocument();
+      expect(screen.getByText('Inspect bearings')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Replace seal' })).not.toBeInTheDocument();
+    });
+
+    it('restores the open activity from the saved state', async () => {
+      renderSection(() => Promise.resolve(list([WITH_DETAIL])), { assetId: ASSET, activityId: SEAL.id });
+
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+    });
+
+    it('tells the user the rows can be opened', async () => {
+      renderSection(() => Promise.resolve(list([SEAL])));
+
+      expect(await screen.findByText(/select an activity to see its full name and description/i)).toBeInTheDocument();
+    });
+
+    it('does not offer Load more while one activity is open', async () => {
+      renderSection(() => Promise.resolve(list([WITH_DETAIL], true)));
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      await screen.findByRole('heading', { name: 'Replace seal' });
+      expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('layout', () => {
+    it('sizes every column, with the date columns wide enough for a date and time on one line', async () => {
+      // Arrange: happy-dom cannot measure layout, so check the grid template the columns produce
+      renderSection(() => Promise.resolve(list([SEAL])));
+      await screen.findByText('Replace seal');
+
+      // Act
+      const template = screen.getAllByRole('row').find((row) => row.style.gridTemplateColumns)?.style.gridTemplateColumns;
+
+      // Assert: name, description, then three dates; the last column takes up any slack
+      expect(template).toMatch(/^200px 240px 190px 190px minmax\(190px,\s*1fr\)$/);
+    });
   });
 
   describe('sorting by a date column', () => {

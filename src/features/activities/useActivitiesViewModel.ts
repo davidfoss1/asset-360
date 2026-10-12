@@ -2,6 +2,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 
 import { useAppDeps } from '../../deps/useAppDeps';
 import { toLoadStatus, type LoadStatus } from '../../lib/loadStatus';
+import type { InstanceRef } from '../../lib/properties';
 import type { ActivityItem } from '../../services/RelatedDataService';
 import { useAppState } from '../../state/useAppState';
 
@@ -12,6 +13,10 @@ export const ACTIVITY_MAX = 500;
 export type ActivitiesViewModel = {
   status: LoadStatus;
   activities: ActivityItem[];
+  /** The open activity. Undefined if none is open or the saved one is not among the activities loaded so far. */
+  selectedActivity: ActivityItem | undefined;
+  selectActivity: (activityId: InstanceRef) => void;
+  closeActivity: () => void;
   hasMore: boolean;
   loadMore: () => void;
   isLoadingMore: boolean;
@@ -22,7 +27,7 @@ export type ActivitiesViewModel = {
 
 export function useActivitiesViewModel(): ActivitiesViewModel {
   const { related } = useAppDeps();
-  const { state } = useAppState();
+  const { state, selectActivity } = useAppState();
   const assetId = state.assetId;
 
   // The API sorts the activities, and DMS cannot page a custom sort without a cursorable index. So a
@@ -40,9 +45,17 @@ export function useActivitiesViewModel(): ActivitiesViewModel {
     enabled: assetId !== null,
   });
 
+  const activityId = state.activityId;
   return {
     status: toLoadStatus(activities, (latest) => latest.items.length === 0),
     activities: activities.data?.items ?? [],
+    selectedActivity: activityId
+      ? activities.data?.items.find(
+          (activity) => activity.id.space === activityId.space && activity.id.externalId === activityId.externalId
+        )
+      : undefined,
+    selectActivity,
+    closeActivity: () => selectActivity(null),
     hasMore: activities.hasNextPage,
     loadMore: () => {
       if (activities.hasNextPage && !activities.isFetchingNextPage) void activities.fetchNextPage();

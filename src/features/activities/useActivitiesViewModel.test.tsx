@@ -55,6 +55,53 @@ describe(useActivitiesViewModel.name, () => {
     await waitFor(() => expect(result.current.status).toBe('success'));
   });
 
+  describe('opening an activity', () => {
+    const OTHER: ActivityItem = { id: { space: 's', externalId: 'wo-2' }, name: 'Inspect bearings' };
+
+    function renderOpen(initialState: Record<string, unknown> = {}) {
+      return renderHook(() => useActivitiesViewModel(), {
+        wrapper: makeViewModelWrapper({
+          deps: makeDeps({ related: { listActivities: () => Promise.resolve(list([ACTIVITY, OTHER])) } }),
+          initialState: { assetId: ASSET, ...initialState },
+        }),
+      });
+    }
+
+    it('has no open activity to begin with', async () => {
+      const { result } = renderOpen();
+
+      await waitFor(() => expect(result.current.status).toBe('success'));
+
+      expect(result.current.selectedActivity).toBeUndefined();
+    });
+
+    it('opens an activity, and closes it again', async () => {
+      // Arrange
+      const { result } = renderOpen();
+      await waitFor(() => expect(result.current.status).toBe('success'));
+
+      // Act / Assert
+      act(() => result.current.selectActivity(OTHER.id));
+      expect(result.current.selectedActivity).toEqual(OTHER);
+      act(() => result.current.closeActivity());
+      expect(result.current.selectedActivity).toBeUndefined();
+    });
+
+    it('restores the open activity from the saved state', async () => {
+      const { result } = renderOpen({ activityId: ACTIVITY.id });
+
+      await waitFor(() => expect(result.current.selectedActivity).toEqual(ACTIVITY));
+    });
+
+    it('has no open activity when the saved one is not among the loaded activities', async () => {
+      const { result } = renderOpen({ activityId: { space: 's', externalId: 'older' } });
+
+      await waitFor(() => expect(result.current.status).toBe('success'));
+
+      expect(result.current.selectedActivity).toBeUndefined();
+    });
+  });
+
   describe('loading more', () => {
     it('offers more only when the service says there is more', async () => {
       const { result } = renderHookFor(() => Promise.resolve(list([ACTIVITY], { hasMore: true })));
