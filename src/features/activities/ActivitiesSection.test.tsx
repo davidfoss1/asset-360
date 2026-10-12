@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { stubChartSize } from '../../__mocks__/stubChartSize';
 import { stubLayoutSize } from '../../__mocks__/stubLayout';
 import { makeDeps, makeViewModelWrapper } from '../../__mocks__/viewModelWrapper';
 import type { ActivityItem, ActivityList, RelatedDataService } from '../../services/RelatedDataService';
@@ -210,6 +211,49 @@ describe(ActivitiesSection.name, () => {
 
       // Assert: name, description, then three dates; the last column takes up any slack
       expect(template).toMatch(/^200px 240px 190px 190px minmax\(190px,\s*1fr\)$/);
+    });
+  });
+
+  describe('fitting the width it is given', () => {
+    let restoreSize: () => void;
+
+    afterEach(() => {
+      restoreSize();
+    });
+
+    async function headersAt(width: number): Promise<string[]> {
+      restoreSize = stubChartSize(width);
+      renderSection(() => Promise.resolve(list([SEAL])));
+      await screen.findByText('Replace seal');
+      return screen.getAllByRole('columnheader').map((header) => header.textContent ?? '');
+    }
+
+    it('shows every column when there is room', async () => {
+      const headers = await headersAt(1100);
+
+      expect(headers).toEqual(['Name', 'Description', 'Scheduled start', 'Started', 'Ended']);
+    });
+
+    it('drops the description and scheduled start in a medium width, and the dates stay', async () => {
+      const headers = await headersAt(800);
+
+      expect(headers).toEqual(['Name', 'Started', 'Ended']);
+      expect(screen.queryByText('Mechanical seal leaking')).not.toBeInTheDocument();
+    });
+
+    it('keeps only the name and when it started in a narrow width', async () => {
+      const headers = await headersAt(450);
+
+      expect(headers).toEqual(['Name', 'Started']);
+    });
+
+    it('still opens the whole activity from a narrow table', async () => {
+      // Arrange
+      await headersAt(450);
+      await userEvent.click(screen.getByText('Replace seal'));
+
+      // Assert: what the narrow table left out is in the detail
+      expect(await screen.findByText('Mechanical seal leaking')).toBeInTheDocument();
     });
   });
 

@@ -1,28 +1,26 @@
 import { DataGrid } from '@cognite/aura/data-grid';
 import type { ColumnDef } from '@tanstack/react-table';
+import { useMemo } from 'react';
 
 import { LoadMore } from '../../components/LoadMore';
 import { SectionState } from '../../components/SectionState';
 import { formatDateTime } from '../../lib/format';
+import { useElementWidth } from '../../lib/useElementWidth';
 import type { ActivityItem } from '../../services/RelatedDataService';
 
+import { activityColumnLayout, type ActivityColumnId } from './activityColumns';
 import { ActivityDetail } from './ActivityDetail';
 import { useActivitiesViewModel } from './useActivitiesViewModel';
 
-// Every column needs a width: TanStack gives an unsized one 150px, which cut names and descriptions
-// short and left the last column to take all the slack. Together these fit the app's content width.
-const NAME_COLUMN_WIDTH = 200;
-const DESCRIPTION_COLUMN_WIDTH = 240;
-/** Wide enough for "Sep 13, 2012, 10:26 PM" on one line. */
-const DATE_COLUMN_WIDTH = 190;
-
-const COLUMNS: ColumnDef<ActivityItem>[] = [
-  { id: 'name', header: 'Name', size: NAME_COLUMN_WIDTH, accessorFn: (row) => row.name },
-  { id: 'description', header: 'Description', size: DESCRIPTION_COLUMN_WIDTH, accessorFn: (row) => row.description ?? '' },
-  dateColumn('scheduled', 'Scheduled start', (row) => row.scheduledStartTime),
-  dateColumn('start', 'Started', (row) => row.startTime),
-  dateColumn('end', 'Ended', (row) => row.endTime),
-];
+// Widths come from `activityColumnLayout`, since the grid gives every column a fixed width and cannot
+// shrink on its own. TanStack gives an unsized column 150px, which is why each one is sized there.
+const COLUMNS: Record<ActivityColumnId, ColumnDef<ActivityItem>> = {
+  name: { id: 'name', header: 'Name', accessorFn: (row) => row.name },
+  description: { id: 'description', header: 'Description', accessorFn: (row) => row.description ?? '' },
+  scheduled: dateColumn('scheduled', 'Scheduled start', (row) => row.scheduledStartTime),
+  start: dateColumn('start', 'Started', (row) => row.startTime),
+  end: dateColumn('end', 'Ended', (row) => row.endTime),
+};
 
 /** Sorts on the time itself, since the formatted text ("Dec 8, 2015") would sort alphabetically. */
 function dateColumn(id: string, header: string, time: (row: ActivityItem) => number | undefined): ColumnDef<ActivityItem> {
@@ -30,7 +28,6 @@ function dateColumn(id: string, header: string, time: (row: ActivityItem) => num
     id,
     header,
     accessorFn: time,
-    size: DATE_COLUMN_WIDTH,
     cell: ({ row }) => formatDateTime(time(row.original)),
     // Activities with no date stay at the bottom whichever way the column is sorted.
     sortUndefined: 'last',
@@ -51,7 +48,15 @@ export function ActivitiesSection() {
     retry,
   } = useActivitiesViewModel();
 
+  // Measured on an element that is always there, since the table itself only exists once loaded.
+  const { ref, width } = useElementWidth<HTMLDivElement>();
+  const columns = useMemo(
+    () => activityColumnLayout(width).map(({ id, size }) => ({ ...COLUMNS[id], size })),
+    [width]
+  );
+
   return (
+    <div ref={ref} className="w-full min-w-0">
     <SectionState label="activities" status={status} emptyTitle="No activities for this asset" onRetry={retry}>
       {selectedActivity ? (
         <ActivityDetail activity={selectedActivity} onBack={closeActivity} />
@@ -62,7 +67,7 @@ export function ActivitiesSection() {
           <DataGrid
             aria-label="Activities"
             data={activities}
-            columns={COLUMNS}
+            columns={columns}
             getRowId={(row) => `${row.id.space}/${row.id.externalId}`}
             enableSorting
             onRowClick={(row) => selectActivity(row.original.id)}
@@ -78,5 +83,6 @@ export function ActivitiesSection() {
       </div>
       )}
     </SectionState>
+    </div>
   );
 }
