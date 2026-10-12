@@ -1,0 +1,314 @@
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { stubChartSize } from '../../__mocks__/stubChartSize';
+import { stubLayoutSize } from '../../__mocks__/stubLayout';
+import { makeDeps, makeViewModelWrapper } from '../../__mocks__/viewModelWrapper';
+import type { ActivityItem, ActivityList, RelatedDataService } from '../../services/RelatedDataService';
+
+import { ActivitiesSection } from './ActivitiesSection';
+
+const ASSET = { space: 's', externalId: 'pump-101' };
+const SEAL: ActivityItem = {
+  id: { space: 's', externalId: 'wo-1' },
+  name: 'Replace seal',
+  description: 'Mechanical seal leaking',
+  startTime: Date.UTC(2026, 8, 1, 8, 0),
+  endTime: Date.UTC(2026, 8, 1, 12, 0),
+};
+const INSPECT: ActivityItem = { id: { space: 's', externalId: 'wo-2' }, name: 'Inspect bearings' };
+
+function renderSection(
+  listActivities: RelatedDataService['listActivities'],
+  initialState: Record<string, unknown> = { assetId: ASSET }
+) {
+  const deps = makeDeps({ related: { listActivities } });
+  render(<ActivitiesSection />, { wrapper: makeViewModelWrapper({ deps, initialState }) });
+}
+
+describe(ActivitiesSection.name, () => {
+  let restoreLayout: () => void;
+
+  beforeEach(() => {
+    restoreLayout = stubLayoutSize();
+  });
+
+  afterEach(() => {
+    restoreLayout();
+  });
+
+  it('shows a loading skeleton first', () => {
+    renderSection(() => new Promise<ActivityList>(() => undefined));
+
+    expect(screen.getByRole('status', { name: 'Loading activities' })).toBeInTheDocument();
+  });
+
+  it('lists activities in a table with their dates', async () => {
+    // Arrange / Act
+    renderSection(() => Promise.resolve(list([SEAL, INSPECT])));
+
+    // Assert
+    expect(await screen.findByText('Replace seal')).toBeInTheDocument();
+    expect(screen.getByText('Mechanical seal leaking')).toBeInTheDocument();
+    expect(screen.getByText('Inspect bearings')).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Activities' })).toBeInTheDocument();
+  });
+
+  it('shows an empty state naming what is missing', async () => {
+    renderSection(() => Promise.resolve(list([])));
+
+    expect(await screen.findByText('No activities for this asset')).toBeInTheDocument();
+  });
+
+  it('shows an error with retry that loads again', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(list([SEAL]));
+    renderSection(listActivities);
+
+    // Act
+    (await screen.findByRole('button', { name: /retry/i })).click();
+
+    // Assert
+    await waitFor(() => expect(screen.getByText('Replace seal')).toBeInTheDocument());
+  });
+
+  it('has no Load more button when everything is shown', async () => {
+    renderSection(() => Promise.resolve(list([SEAL, INSPECT])));
+    await screen.findByText('Replace seal');
+
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  });
+
+  it('loads and shows more activities when Load more is pressed', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockResolvedValueOnce(list([SEAL, INSPECT]));
+    renderSection(listActivities);
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument());
+  });
+
+  it('disables the button while more are loading', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockReturnValueOnce(new Promise<ActivityList>(() => undefined));
+    renderSection(listActivities);
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByRole('button', { name: 'Loading more…' })).toBeDisabled();
+    expect(screen.getByText('Replace seal')).toBeInTheDocument();
+  });
+
+  it('says so when loading more fails, and lets the user try again', async () => {
+    // Arrange
+    const listActivities = vi
+      .fn<RelatedDataService['listActivities']>()
+      .mockResolvedValueOnce(list([SEAL], true))
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(list([SEAL, INSPECT]));
+    renderSection(listActivities);
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('Could not load more activities.')).toBeInTheDocument();
+    expect(screen.getByText('Replace seal')).toBeInTheDocument();
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Inspect bearings')).toBeInTheDocument();
+  });
+
+  describe('opening an activity', () => {
+    const LONG_DESCRIPTION = 'Mechanical seal leaking on the drive end; replace and pressure test before restart.';
+    const WITH_DETAIL: ActivityItem = { ...SEAL, description: LONG_DESCRIPTION };
+
+    it('shows the full activity when its row is clicked, in place of the table', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL, INSPECT])));
+
+      // Act
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+      expect(screen.getByText(LONG_DESCRIPTION)).toBeInTheDocument();
+      expect(screen.queryByRole('table', { name: 'Activities' })).not.toBeInTheDocument();
+    });
+
+    it('opens the activity from the keyboard too', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL])));
+      const row = (await screen.findByText('Replace seal')).closest('[role="row"]');
+      if (!(row instanceof HTMLElement)) throw new Error('row not found');
+
+      // Act
+      row.focus();
+      await userEvent.keyboard('{Enter}');
+
+      // Assert
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+    });
+
+    it('goes back to the table with the Back button', async () => {
+      // Arrange
+      renderSection(() => Promise.resolve(list([WITH_DETAIL, INSPECT])));
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      // Act
+      await userEvent.click(await screen.findByRole('button', { name: 'Back to activities' }));
+
+      // Assert
+      expect(await screen.findByRole('table', { name: 'Activities' })).toBeInTheDocument();
+      expect(screen.getByText('Inspect bearings')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Replace seal' })).not.toBeInTheDocument();
+    });
+
+    it('restores the open activity from the saved state', async () => {
+      renderSection(() => Promise.resolve(list([WITH_DETAIL])), { assetId: ASSET, activityId: SEAL.id });
+
+      expect(await screen.findByRole('heading', { name: 'Replace seal' })).toBeInTheDocument();
+    });
+
+    it('tells the user the rows can be opened', async () => {
+      renderSection(() => Promise.resolve(list([SEAL])));
+
+      expect(await screen.findByText(/select an activity to see its full name and description/i)).toBeInTheDocument();
+    });
+
+    it('does not offer Load more while one activity is open', async () => {
+      renderSection(() => Promise.resolve(list([WITH_DETAIL], true)));
+      await userEvent.click(await screen.findByText('Replace seal'));
+
+      await screen.findByRole('heading', { name: 'Replace seal' });
+      expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('layout', () => {
+    it('sizes every column, with the date columns wide enough for a date and time on one line', async () => {
+      // Arrange: happy-dom cannot measure layout, so check the grid template the columns produce
+      renderSection(() => Promise.resolve(list([SEAL])));
+      await screen.findByText('Replace seal');
+
+      // Act
+      const template = screen.getAllByRole('row').find((row) => row.style.gridTemplateColumns)?.style.gridTemplateColumns;
+
+      // Assert: name, description, then three dates; the last column takes up any slack
+      expect(template).toMatch(/^200px 240px 190px 190px minmax\(190px,\s*1fr\)$/);
+    });
+  });
+
+  describe('fitting the width it is given', () => {
+    let restoreSize: () => void;
+
+    afterEach(() => {
+      restoreSize();
+    });
+
+    async function headersAt(width: number): Promise<string[]> {
+      restoreSize = stubChartSize(width);
+      renderSection(() => Promise.resolve(list([SEAL])));
+      await screen.findByText('Replace seal');
+      return screen.getAllByRole('columnheader').map((header) => header.textContent ?? '');
+    }
+
+    it('shows every column when there is room', async () => {
+      const headers = await headersAt(1100);
+
+      expect(headers).toEqual(['Name', 'Description', 'Scheduled start', 'Started', 'Ended']);
+    });
+
+    it('drops the description and scheduled start in a medium width, and the dates stay', async () => {
+      const headers = await headersAt(800);
+
+      expect(headers).toEqual(['Name', 'Started', 'Ended']);
+      expect(screen.queryByText('Mechanical seal leaking')).not.toBeInTheDocument();
+    });
+
+    it('keeps only the name and when it started in a narrow width', async () => {
+      const headers = await headersAt(450);
+
+      expect(headers).toEqual(['Name', 'Started']);
+    });
+
+    it('still opens the whole activity from a narrow table', async () => {
+      // Arrange
+      await headersAt(450);
+      await userEvent.click(screen.getByText('Replace seal'));
+
+      // Assert: what the narrow table left out is in the detail
+      expect(await screen.findByText('Mechanical seal leaking')).toBeInTheDocument();
+    });
+  });
+
+  describe('sorting by a date column', () => {
+    // Dates are shown formatted ("Dec 8, 2015"), so sorting on that text would put December before
+    // September. The grid must sort on the time itself.
+    const DATE_COLUMNS = [
+      ['Scheduled start', 'scheduledStartTime'],
+      ['Started', 'startTime'],
+      ['Ended', 'endTime'],
+    ] as const;
+
+    // Task A is dated Dec 2015, B has no date, C Sep 2012, D Oct 2014, E Nov 2013.
+    const OLDEST_FIRST = 'Task C,Task E,Task D,Task A,Task B';
+    const NEWEST_FIRST = 'Task A,Task D,Task E,Task C,Task B';
+
+    it.each(DATE_COLUMNS)('sorts %s by time, and keeps activities without a date last', async (header, field) => {
+      // Arrange: in the order the API would return them, so a sort has to change something
+      renderSection(() =>
+        Promise.resolve(
+          list([
+            dated('Task A', field, Date.UTC(2015, 11, 8)),
+            dated('Task B', field, undefined),
+            dated('Task C', field, Date.UTC(2012, 8, 13)),
+            dated('Task D', field, Date.UTC(2014, 9, 30)),
+            dated('Task E', field, Date.UTC(2013, 10, 6)),
+          ])
+        )
+      );
+      await screen.findByText('Task A');
+
+      // Act
+      await userEvent.click(screen.getByRole('columnheader', { name: header }));
+      const afterFirstClick = rowNames();
+      await userEvent.click(screen.getByRole('columnheader', { name: header }));
+      const afterSecondClick = rowNames();
+
+      // Assert: the two clicks give the two directions, whichever comes first, and never the text order
+      expect([afterFirstClick, afterSecondClick].sort()).toEqual([NEWEST_FIRST, OLDEST_FIRST].sort());
+    });
+  });
+});
+
+function list(items: ActivityItem[], hasMore = false): ActivityList {
+  return { items, hasMore };
+}
+
+function dated(name: string, field: 'scheduledStartTime' | 'startTime' | 'endTime', time: number | undefined): ActivityItem {
+  return { id: { space: 's', externalId: name }, name, [field]: time };
+}
+
+/** The activity names in the order the table shows them. */
+function rowNames(): string {
+  return screen
+    .getAllByRole('row')
+    .flatMap((row) => /Task [A-E]/.exec(row.textContent ?? '') ?? [])
+    .join();
+}
