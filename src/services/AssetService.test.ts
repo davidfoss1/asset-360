@@ -86,17 +86,40 @@ describe(CdmAssetService.name, () => {
       expect(result.limited).toBe(false);
     });
 
-    it('is limited when the API returned as many results as it can, since it cannot page', async () => {
-      // Arrange: none of these match every token, so none survive the local filter
-      const full = Array.from({ length: 50 }, (_, i) => assetNode(`a${i}`, { name: `Tank ${i}` }));
+    it('is limited when every one of the most results the API can return matches, since there may be more', async () => {
+      // Arrange: the API cannot page, and nothing was filtered out, so matches may continue past these
+      const full = Array.from({ length: 50 }, (_, i) => assetNode(`a${i}`, { name: `Pump ${i}` }));
+      vi.mocked(client.instances.search).mockResolvedValue(response(full));
+
+      // Act
+      const result = await new CdmAssetService(client, runImmediately).search('pump');
+
+      // Assert
+      expect(result.items).toHaveLength(50);
+      expect(result.limited).toBe(true);
+    });
+
+    it('is not limited when the API returned its most but some did not match every word', async () => {
+      // Arrange: the API ranks by relevance, so once partial matches appear the full matches are used up
+      const full = Array.from({ length: 50 }, (_, i) => assetNode(`a${i}`, { name: i < 3 ? `Pump 101 ${i}` : `Tank ${i}` }));
       vi.mocked(client.instances.search).mockResolvedValue(response(full));
 
       // Act
       const result = await new CdmAssetService(client, runImmediately).search('pump 101');
 
       // Assert
-      expect(result.limited).toBe(true);
+      expect(result.items).toHaveLength(3);
+      expect(result.limited).toBe(false);
+    });
+
+    it('is not limited when the API returned its most and none matched every word', async () => {
+      const full = Array.from({ length: 50 }, (_, i) => assetNode(`a${i}`, { name: `Tank ${i}` }));
+      vi.mocked(client.instances.search).mockResolvedValue(response(full));
+
+      const result = await new CdmAssetService(client, runImmediately).search('pump 101');
+
       expect(result.items).toEqual([]);
+      expect(result.limited).toBe(false);
     });
 
     it('falls back to the externalId when an asset has no name', async () => {

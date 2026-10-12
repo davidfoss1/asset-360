@@ -64,13 +64,7 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
                 <Loader size={20} />
               </div>
             ) : null}
-            {status === 'empty' ? (
-              <p className="p-3 text-sm text-muted-foreground">
-                {limited
-                  ? 'None of the top results match. Refine your search to find it.'
-                  : 'No assets match your search.'}
-              </p>
-            ) : null}
+            {status === 'empty' ? <p className="p-3 text-sm text-muted-foreground">No assets match your search.</p> : null}
             {status === 'error' ? (
               <Alert variant="error">
                 <AlertTitle>Search failed</AlertTitle>

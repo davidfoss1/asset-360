@@ -52,10 +52,13 @@ export class CdmAssetService implements AssetService {
 
     // The SDK search request has no `operator`, and the API default is changing from OR to AND
     // (Nov 2026). Enforce AND here so behaviour is the same either side of the change.
+    const matches = items.filter((node) => matchesAllTokens(node, tokens));
     return {
-      items: items.filter((node) => matchesAllTokens(node, tokens)).map(toSummary),
-      // The SDK's search has no cursor, so a full response is the only sign of more.
-      limited: items.length >= SEARCH_LIMIT,
+      items: matches.map(toSummary),
+      // The SDK's search has no cursor, so there is no exact answer. A full response in which every
+      // result matched may well continue. If some did not match, the API (which ranks by relevance)
+      // had already run out of full matches, so nothing is likely to be missing.
+      limited: items.length >= SEARCH_LIMIT && matches.length === items.length,
     };
   }
 

@@ -114,16 +114,4 @@ describe(AssetSearch.name, () => {
     await screen.findByRole('option', { name: /PUMP-101/ });
     expect(screen.queryByText(/refine your search/i)).not.toBeInTheDocument();
   });
-
-  it('explains that the top results had no match when none of a cut-short search matched', async () => {
-    const { user } = renderSearch({
-      search: () => Promise.resolve({ items: [], limited: true }),
-      initialState: { query: 'pump 101' },
-    });
-
-    await user.click(screen.getByRole('combobox'));
-
-    expect(await screen.findByText(/refine your search/i)).toBeInTheDocument();
-    expect(screen.queryByRole('option')).not.toBeInTheDocument();
-  });
 });
