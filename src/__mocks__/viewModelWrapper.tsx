@@ -5,6 +5,7 @@ import { assert, vi } from 'vitest';
 import { AppDepsContext, type AppDeps } from '../deps/AppDepsContext';
 import type { AssetService } from '../services/AssetService';
 import type { DatapointsService } from '../services/DatapointsService';
+import type { FileDownloadService } from '../services/FileDownloadService';
 import type { RelatedDataService } from '../services/RelatedDataService';
 import { AppStateProvider } from '../state/AppStateProvider';
 
@@ -12,6 +13,8 @@ type DepsOverrides = {
   assets?: Partial<AssetService>;
   related?: Partial<RelatedDataService>;
   datapoints?: Partial<DatapointsService>;
+  files?: Partial<FileDownloadService>;
+  openExternal?: AppDeps['openExternal'];
 };
 
 /** Service mocks that fail loudly if the unit under test calls something it should not. */
@@ -33,6 +36,11 @@ export function makeDeps(overrides: DepsOverrides = {}): AppDeps {
       getLatest: vi.fn<DatapointsService['getLatest']>(() => assert.fail('getLatest not implemented')),
       ...overrides.datapoints,
     },
+    files: {
+      getDownloadUrl: vi.fn<FileDownloadService['getDownloadUrl']>(() => assert.fail('getDownloadUrl not implemented')),
+      ...overrides.files,
+    },
+    openExternal: overrides.openExternal ?? vi.fn<AppDeps['openExternal']>(() => assert.fail('openExternal not implemented')),
   };
 }
 

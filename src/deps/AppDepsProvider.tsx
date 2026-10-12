@@ -1,29 +1,21 @@
 import { useCogniteSdk } from '@cognite/app-sdk/react';
 import { useMemo, type ReactNode } from 'react';
 
-import { createAssetService } from '../services/AssetService';
-import { createDatapointsService } from '../services/DatapointsService';
-import { createRelatedDataService } from '../services/RelatedDataService';
-
 import { AppDepsContext, type AppDeps } from './AppDepsContext';
+import { createAppDeps, type AppHost } from './createAppDeps';
 
 type AppDepsProviderProps = {
-  /** Replaces the real services. Used by tests to mock at the service boundary. */
-  deps?: AppDeps;
+  host: AppHost;
+  /** Replaces parts of the real dependencies. Used by tests to mock at the service boundary. */
+  deps?: Partial<AppDeps>;
   children: ReactNode;
 };
 
-/** Wires the real services to the authenticated SDK client. Must sit inside CogniteSdkProvider. */
-export function AppDepsProvider({ deps: override, children }: AppDepsProviderProps) {
+/** Provides the app dependencies. Must sit inside CogniteSdkProvider. */
+export function AppDepsProvider({ host, deps: override, children }: AppDepsProviderProps) {
   const client = useCogniteSdk();
-  const defaults = useMemo<AppDeps>(
-    () => ({
-      assets: createAssetService(client),
-      related: createRelatedDataService(client),
-      datapoints: createDatapointsService(client),
-    }),
-    [client]
-  );
+  const defaults = useMemo(() => createAppDeps(client, host), [client, host]);
+  const value = useMemo(() => ({ ...defaults, ...override }), [defaults, override]);
 
-  return <AppDepsContext.Provider value={override ?? defaults}>{children}</AppDepsContext.Provider>;
+  return <AppDepsContext.Provider value={value}>{children}</AppDepsContext.Provider>;
 }

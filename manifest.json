@@ -1,6 +1,11 @@
 {
   "manifestVersion": 1,
   "permissions": {
-    "network": []
+    "network": [
+      {
+        "sources": ["https://*.cognitedata.com"],
+        "directives": ["img-src"]
+      }
+    ]
   }
 }

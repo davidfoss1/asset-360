@@ -11,11 +11,12 @@ import type { ComponentProps } from 'react';
 
 import type { AppDeps } from './deps/AppDepsContext';
 import { AppDepsProvider } from './deps/AppDepsProvider';
+import type { AppHost } from './deps/createAppDeps';
 import { AssetSearch } from './features/search/AssetSearch';
 import { AssetWorkspace } from './features/workspace/AssetWorkspace';
 import { AppStateProvider, type AppStateApi } from './state/AppStateProvider';
 
-type AppConnectResult = { api: AppStateApi; initialState?: string };
+type AppConnectResult = { api: AppStateApi & AppHost; initialState?: string };
 
 const loadingFallback = (
   <main className="min-h-screen bg-muted/50 text-foreground">
@@ -48,8 +49,8 @@ const errorFallback = (
 
 type AppProps = {
   deps?: ComponentProps<typeof CogniteSdkProvider>['deps'];
-  /** Replaces the real services, so tests can mock at the service boundary. */
-  appDeps?: AppDeps;
+  /** Replaces parts of the real dependencies, so tests can mock at the service boundary. */
+  appDeps?: Partial<AppDeps>;
   connectToHostApp?: () => Promise<AppConnectResult>;
 };
 
@@ -83,7 +84,7 @@ function App({
         loadingFallback
       ) : (
         // initialState is read once when the provider mounts, so wait until we have it.
-        <AppDepsProvider deps={appDeps}>
+        <AppDepsProvider host={connection.api} deps={appDeps}>
           <AppStateProvider api={connection.api} initialState={connection.initialState}>
             <main className="min-h-screen bg-muted/50 text-foreground">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-8">

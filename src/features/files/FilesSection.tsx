@@ -1,24 +1,22 @@
 import { Badge } from '@cognite/aura/components/badge';
 import { Button } from '@cognite/aura/components/button';
-import { Skeleton } from '@cognite/aura/components/skeleton';
 import { DataGrid } from '@cognite/aura/data-grid';
 import type { ColumnDef } from '@tanstack/react-table';
-import { lazy, Suspense, useMemo, type ComponentType } from 'react';
+import { useMemo, type ComponentType } from 'react';
 
 import { SectionState } from '../../components/SectionState';
 import type { InstanceRef } from '../../lib/properties';
 import type { FileItem } from '../../services/RelatedDataService';
 
+import { FilePreview } from './FilePreview';
 import { useFilesViewModel } from './useFilesViewModel';
 
-const LazyFilePreview = lazy(() => import('./FilePreview').then((module) => ({ default: module.FilePreview })));
-
 type FilesSectionProps = {
-  /** The viewer for the open file. Injectable so tests need not load react-pdf. */
+  /** Shows the open file. Injectable so tests of the table need not set up file downloads. */
   Preview?: ComponentType<{ file: FileItem }>;
 };
 
-export function FilesSection({ Preview = LazyFilePreview }: FilesSectionProps) {
+export function FilesSection({ Preview = FilePreview }: FilesSectionProps) {
   const { status, files, selectedFile, selectFile, closeFile, retry } = useFilesViewModel();
   const columns = useMemo(() => makeColumns(selectFile), [selectFile]);
 
@@ -42,10 +40,8 @@ export function FilesSection({ Preview = LazyFilePreview }: FilesSectionProps) {
                 Close preview
               </Button>
             </div>
-            <div className="h-[600px]">
-              <Suspense fallback={<Skeleton className="h-full w-full" />}>
-                <Preview file={selectedFile} />
-              </Suspense>
+            <div className="min-h-48">
+              <Preview file={selectedFile} />
             </div>
           </section>
         ) : null}

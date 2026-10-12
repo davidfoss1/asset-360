@@ -14,7 +14,7 @@ import type { AssetDetail, AssetSummary } from './services/AssetService';
 import type { ActivityItem, FileItem, TimeSeriesItem } from './services/RelatedDataService';
 
 type SdkDeps = NonNullable<ComponentProps<typeof App>['deps']>;
-type AppApi = Pick<HostAppAPI, 'syncInternalState'>;
+type AppApi = Pick<HostAppAPI, 'syncInternalState' | 'navigateExternal'>;
 
 const PUMP: AssetSummary = { id: { space: 's', externalId: 'pump-101' }, name: 'PUMP-101', description: 'Feed pump' };
 const PUMP_DETAIL: AssetDetail = { ...PUMP, assetClass: 'Pump' };
@@ -68,6 +68,20 @@ describe('App', () => {
     await user.click(screen.getByRole('tab', { name: 'Files' }));
     expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
     expect(api.syncInternalState).toHaveBeenLastCalledWith(expect.stringContaining('"externalId":"pump-101"'));
+  });
+
+  it('opens a file from the files tab in a new browser tab', async () => {
+    // Arrange
+    const { api } = renderApp({ initialState: { assetId: PUMP.id, tab: 'files' } });
+    const user = userEvent.setup();
+    await screen.findByText('P&ID.pdf');
+
+    // Act
+    await user.click(screen.getByRole('button', { name: 'Open P&ID.pdf' }));
+    await user.click(await screen.findByRole('button', { name: /open in new tab/i }));
+
+    // Assert
+    expect(api.navigateExternal).toHaveBeenCalledWith({ url: 'https://files.test/pid', openInNewTab: true });
   });
 
   it('shows a no-results state when nothing matches', async () => {
@@ -141,7 +155,10 @@ type RenderOptions = {
 };
 
 function renderApp({ assets, related, initialState, rawInitialState }: RenderOptions = {}) {
-  const api: AppApi = { syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)) };
+  const api: AppApi = {
+    syncInternalState: vi.fn<HostAppAPI['syncInternalState']>(() => Promise.resolve(true)),
+    navigateExternal: vi.fn<HostAppAPI['navigateExternal']>(() => Promise.resolve(true)),
+  };
   const appDeps = makeDeps({
     assets: { search: () => Promise.resolve([PUMP]), get: () => Promise.resolve(PUMP_DETAIL), ...assets },
     related: {
@@ -150,6 +167,7 @@ function renderApp({ assets, related, initialState, rawInitialState }: RenderOpt
       listFiles: () => Promise.resolve([PID]),
       ...related,
     },
+    files: { getDownloadUrl: () => Promise.resolve('https://files.test/pid') },
     datapoints: {
       getLatest: () => Promise.resolve({ timestamp: 1000, value: 4.2 }),
       getSeries: () => Promise.resolve([{ timestamp: 1000, value: 4.2 }]),
@@ -160,7 +178,7 @@ function renderApp({ assets, related, initialState, rawInitialState }: RenderOpt
   render(
     <App
       deps={makeSdkDeps()}
-      appDeps={appDeps}
+      appDeps={{ assets: appDeps.assets, related: appDeps.related, datapoints: appDeps.datapoints, files: appDeps.files }}
       connectToHostApp={() => Promise.resolve({ api, initialState: state })}
     />,
     { wrapper: makeQueryWrapper() }
