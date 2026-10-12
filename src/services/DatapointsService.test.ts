@@ -1,6 +1,8 @@
 import type { DatapointAggregates } from '@cognite/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { makeCountingRunner, runImmediately } from '../__mocks__/taskRunner';
+
 import { CdmDatapointsService, type DatapointsClient } from './DatapointsService';
 
 const ID = { space: 'instances-space', externalId: 'pump-101-pressure' };
@@ -18,6 +20,21 @@ describe(CdmDatapointsService.name, () => {
     };
   });
 
+  it('sends every SDK call through the task runner', async () => {
+    // Arrange
+    const { run, count } = makeCountingRunner();
+    vi.mocked(client.datapoints.retrieve).mockResolvedValue([aggregates([])]);
+    vi.mocked(client.datapoints.retrieveLatest).mockResolvedValue([]);
+    const service = new CdmDatapointsService(client, run);
+
+    // Act
+    await service.getSeries(ID, { start: 0, end: HOUR });
+    await service.getLatest(ID);
+
+    // Assert
+    expect(count()).toBe(2);
+  });
+
   describe('getSeries', () => {
     it('requests average aggregates by instanceId for the range', async () => {
       // Arrange
@@ -25,7 +42,7 @@ describe(CdmDatapointsService.name, () => {
       const range = { start: 0, end: 24 * HOUR };
 
       // Act
-      await new CdmDatapointsService(client).getSeries(ID, range);
+      await new CdmDatapointsService(client, runImmediately).getSeries(ID, range);
 
       // Assert
       expect(client.datapoints.retrieve).toHaveBeenCalledWith({
@@ -40,7 +57,7 @@ describe(CdmDatapointsService.name, () => {
 
     it('widens the granularity for longer ranges, capped at 120 minutes', async () => {
       vi.mocked(client.datapoints.retrieve).mockResolvedValue([aggregates([])]);
-      const service = new CdmDatapointsService(client);
+      const service = new CdmDatapointsService(client, runImmediately);
 
       await service.getSeries(ID, { start: 0, end: 7 * 24 * HOUR });
       await service.getSeries(ID, { start: 0, end: 365 * 24 * HOUR });
@@ -60,7 +77,7 @@ describe(CdmDatapointsService.name, () => {
       ]);
 
       // Act
-      const series = await new CdmDatapointsService(client).getSeries(ID, { start: 0, end: HOUR });
+      const series = await new CdmDatapointsService(client, runImmediately).getSeries(ID, { start: 0, end: HOUR });
 
       // Assert
       expect(series).toEqual([
@@ -72,13 +89,13 @@ describe(CdmDatapointsService.name, () => {
     it('returns an empty series when the API returns no time series', async () => {
       vi.mocked(client.datapoints.retrieve).mockResolvedValue([]);
 
-      expect(await new CdmDatapointsService(client).getSeries(ID, { start: 0, end: HOUR })).toEqual([]);
+      expect(await new CdmDatapointsService(client, runImmediately).getSeries(ID, { start: 0, end: HOUR })).toEqual([]);
     });
 
     it('propagates API errors', async () => {
       vi.mocked(client.datapoints.retrieve).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmDatapointsService(client).getSeries(ID, { start: 0, end: HOUR })).rejects.toThrow('boom');
+      await expect(new CdmDatapointsService(client, runImmediately).getSeries(ID, { start: 0, end: HOUR })).rejects.toThrow('boom');
     });
   });
 
@@ -86,7 +103,7 @@ describe(CdmDatapointsService.name, () => {
     it('requests the latest datapoint by instanceId', async () => {
       vi.mocked(client.datapoints.retrieveLatest).mockResolvedValue([]);
 
-      await new CdmDatapointsService(client).getLatest(ID);
+      await new CdmDatapointsService(client, runImmediately).getLatest(ID);
 
       expect(client.datapoints.retrieveLatest).toHaveBeenCalledWith([{ instanceId: ID, before: 'now' }]);
     });
@@ -96,7 +113,7 @@ describe(CdmDatapointsService.name, () => {
         { id: 1, isString: false, datapoints: [{ timestamp: new Date(5000), value: 42 }] },
       ]);
 
-      expect(await new CdmDatapointsService(client).getLatest(ID)).toEqual({ timestamp: 5000, value: 42 });
+      expect(await new CdmDatapointsService(client, runImmediately).getLatest(ID)).toEqual({ timestamp: 5000, value: 42 });
     });
 
     it('maps a string latest point', async () => {
@@ -104,19 +121,19 @@ describe(CdmDatapointsService.name, () => {
         { id: 1, isString: true, datapoints: [{ timestamp: new Date(5000), value: 'RUNNING' }] },
       ]);
 
-      expect(await new CdmDatapointsService(client).getLatest(ID)).toEqual({ timestamp: 5000, value: 'RUNNING' });
+      expect(await new CdmDatapointsService(client, runImmediately).getLatest(ID)).toEqual({ timestamp: 5000, value: 'RUNNING' });
     });
 
     it('returns undefined when the series has no datapoints', async () => {
       vi.mocked(client.datapoints.retrieveLatest).mockResolvedValue([{ id: 1, isString: false, datapoints: [] }]);
 
-      expect(await new CdmDatapointsService(client).getLatest(ID)).toBeUndefined();
+      expect(await new CdmDatapointsService(client, runImmediately).getLatest(ID)).toBeUndefined();
     });
 
     it('propagates API errors', async () => {
       vi.mocked(client.datapoints.retrieveLatest).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmDatapointsService(client).getLatest(ID)).rejects.toThrow('boom');
+      await expect(new CdmDatapointsService(client, runImmediately).getLatest(ID)).rejects.toThrow('boom');
     });
   });
 });

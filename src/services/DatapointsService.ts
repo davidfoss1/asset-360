@@ -1,6 +1,7 @@
 import type { CogniteClient } from '@cognite/sdk';
 
 import type { InstanceRef } from '../lib/properties';
+import type { TaskRunner } from '../lib/taskRunner';
 
 export type TimeRange = { start: number; end: number };
 export type SeriesPoint = { timestamp: number; value: number };
@@ -22,17 +23,22 @@ const MINUTE_MS = 60 * 1000;
 const POINT_LIMIT = 1000;
 
 export class CdmDatapointsService implements DatapointsService {
-  constructor(private readonly client: DatapointsClient) {}
+  constructor(
+    private readonly client: DatapointsClient,
+    private readonly run: TaskRunner
+  ) {}
 
   async getSeries(id: InstanceRef, { start, end }: TimeRange): Promise<SeriesPoint[]> {
-    const result = await this.client.datapoints.retrieve({
-      items: [{ instanceId: id }],
-      start,
-      end,
-      aggregates: ['average'],
-      granularity: granularityFor(end - start),
-      limit: POINT_LIMIT,
-    });
+    const result = await this.run(() =>
+      this.client.datapoints.retrieve({
+        items: [{ instanceId: id }],
+        start,
+        end,
+        aggregates: ['average'],
+        granularity: granularityFor(end - start),
+        limit: POINT_LIMIT,
+      })
+    );
 
     const points: SeriesPoint[] = [];
     for (const point of result[0]?.datapoints ?? []) {
@@ -44,7 +50,7 @@ export class CdmDatapointsService implements DatapointsService {
   }
 
   async getLatest(id: InstanceRef): Promise<LatestPoint | undefined> {
-    const result = await this.client.datapoints.retrieveLatest([{ instanceId: id, before: 'now' }]);
+    const result = await this.run(() => this.client.datapoints.retrieveLatest([{ instanceId: id, before: 'now' }]));
     const point = result[0]?.datapoints[0];
     return point ? { timestamp: point.timestamp.getTime(), value: point.value } : undefined;
   }
@@ -57,6 +63,6 @@ function granularityFor(rangeMs: number): string {
 }
 
 /** The only way other modules get the implementation. */
-export function createDatapointsService(client: DatapointsClient): DatapointsService {
-  return new CdmDatapointsService(client);
+export function createDatapointsService(client: DatapointsClient, run: TaskRunner): DatapointsService {
+  return new CdmDatapointsService(client, run);
 }

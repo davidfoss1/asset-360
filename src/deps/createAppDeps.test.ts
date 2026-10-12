@@ -2,7 +2,7 @@ import type { HostAppAPI } from '@cognite/app-sdk';
 import { CogniteClient } from '@cognite/sdk';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createAppDeps, type AppHost } from './createAppDeps';
+import { MAX_CONCURRENT_REQUESTS, createAppDeps, type AppHost } from './createAppDeps';
 
 function makeClient(): CogniteClient {
   return new CogniteClient({
@@ -37,5 +37,40 @@ describe(createAppDeps.name, () => {
 
     // Assert
     expect(host.navigateExternal).toHaveBeenCalledWith({ url: 'https://files.test/a.pdf', openInNewTab: true });
+  });
+
+  it('caps the requests in flight across all services', async () => {
+    // Arrange
+    const client = makeClient();
+    let inFlight = 0;
+    let peak = 0;
+    const releases: Array<() => void> = [];
+    vi.spyOn(client.files, 'getDownloadUrls').mockImplementation(() => {
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      return new Promise((resolve) => {
+        releases.push(() => {
+          inFlight -= 1;
+          resolve([{ instanceId: { space: 's', externalId: 'f' }, downloadUrl: 'https://files.test/f' }]);
+        });
+      });
+    });
+    const deps = createAppDeps(client, makeHost());
+
+    // Act
+    const downloads = Array.from({ length: MAX_CONCURRENT_REQUESTS * 2 }, () =>
+      deps.files.getDownloadUrl({ space: 's', externalId: 'f' })
+    );
+    let completed = 0;
+    while (completed < downloads.length) {
+      await vi.waitFor(() => expect(releases.length).toBeGreaterThan(0));
+      const batch = releases.splice(0);
+      completed += batch.length;
+      batch.forEach((release) => release());
+    }
+    await Promise.all(downloads);
+
+    // Assert
+    expect(peak).toBe(MAX_CONCURRENT_REQUESTS);
   });
 });

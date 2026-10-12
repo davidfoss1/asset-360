@@ -2,6 +2,7 @@ import type { ByIdsResponse, NodeAndEdgeCollectionResponseWithCursorV3Response }
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { makeNode } from '../__mocks__/nodes';
+import { makeCountingRunner, runImmediately } from '../__mocks__/taskRunner';
 import { VIEWS, type ViewRef } from '../config/model';
 
 import { CdmRelatedDataService, type RelatedDataClient } from './RelatedDataService';
@@ -20,13 +21,29 @@ describe(CdmRelatedDataService.name, () => {
     };
   });
 
+  it('sends every SDK call through the task runner', async () => {
+    // Arrange
+    const { run, count } = makeCountingRunner();
+    const unit = { space: 'cdf_cdm', externalId: 'bar' };
+    vi.mocked(client.instances.list).mockResolvedValue(
+      listResponse([node('ts-1', VIEWS.timeSeries, { name: 'Pressure', type: 'numeric', unit })])
+    );
+    vi.mocked(client.instances.retrieve).mockResolvedValue(retrieveResponse([]));
+
+    // Act
+    await new CdmRelatedDataService(client, run).listTimeSeries(ASSET);
+
+    // Assert: one list, one unit lookup
+    expect(count()).toBe(2);
+  });
+
   describe('listTimeSeries', () => {
     it('lists CogniteTimeSeries whose assets contain the asset', async () => {
       // Arrange
       vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
 
       // Act
-      await new CdmRelatedDataService(client).listTimeSeries(ASSET);
+      await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
 
       // Assert
       expect(client.instances.list).toHaveBeenCalledWith(
@@ -53,7 +70,7 @@ describe(CdmRelatedDataService.name, () => {
       );
 
       // Act
-      const items = await new CdmRelatedDataService(client).listTimeSeries(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
 
       // Assert
       expect(client.instances.retrieve).toHaveBeenCalledTimes(1);
@@ -73,7 +90,7 @@ describe(CdmRelatedDataService.name, () => {
         listResponse([node('ts-1', VIEWS.timeSeries, { name: 'Temp', type: 'numeric', sourceUnit: 'degC' })])
       );
 
-      const items = await new CdmRelatedDataService(client).listTimeSeries(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
 
       expect(client.instances.retrieve).not.toHaveBeenCalled();
       expect(items[0]?.unit).toBe('degC');
@@ -84,7 +101,7 @@ describe(CdmRelatedDataService.name, () => {
         listResponse([node('a', VIEWS.timeSeries, { name: 'A' }), node('b', VIEWS.timeSeries, { name: 'B', type: 'weird' })])
       );
 
-      const items = await new CdmRelatedDataService(client).listTimeSeries(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
 
       expect(items.map((i) => i.type)).toEqual(['numeric', 'numeric']);
     });
@@ -92,7 +109,7 @@ describe(CdmRelatedDataService.name, () => {
     it('propagates API errors', async () => {
       vi.mocked(client.instances.list).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmRelatedDataService(client).listTimeSeries(ASSET)).rejects.toThrow('boom');
+      await expect(new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET)).rejects.toThrow('boom');
     });
   });
 
@@ -100,7 +117,7 @@ describe(CdmRelatedDataService.name, () => {
     it('lists CogniteActivity whose assets contain the asset', async () => {
       vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
 
-      await new CdmRelatedDataService(client).listActivities(ASSET);
+      await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
 
       expect(client.instances.list).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -127,7 +144,7 @@ describe(CdmRelatedDataService.name, () => {
       );
 
       // Act
-      const items = await new CdmRelatedDataService(client).listActivities(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
 
       // Assert
       expect(items.map((i) => i.name)).toEqual(['New', 'Planned', 'Old', 'Undated']);
@@ -143,7 +160,7 @@ describe(CdmRelatedDataService.name, () => {
         listResponse([node('a', VIEWS.activity, { name: 'A', startTime: 'not a date' })])
       );
 
-      const items = await new CdmRelatedDataService(client).listActivities(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET);
 
       expect(items[0]?.startTime).toBeUndefined();
     });
@@ -152,13 +169,13 @@ describe(CdmRelatedDataService.name, () => {
       const many = Array.from({ length: 40 }, (_, i) => node(`a${i}`, VIEWS.activity, { name: `A${i}` }));
       vi.mocked(client.instances.list).mockResolvedValue(listResponse(many));
 
-      expect(await new CdmRelatedDataService(client).listActivities(ASSET)).toHaveLength(25);
+      expect(await new CdmRelatedDataService(client, runImmediately).listActivities(ASSET)).toHaveLength(25);
     });
 
     it('propagates API errors', async () => {
       vi.mocked(client.instances.list).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmRelatedDataService(client).listActivities(ASSET)).rejects.toThrow('boom');
+      await expect(new CdmRelatedDataService(client, runImmediately).listActivities(ASSET)).rejects.toThrow('boom');
     });
   });
 
@@ -173,7 +190,7 @@ describe(CdmRelatedDataService.name, () => {
       );
 
       // Act
-      const items = await new CdmRelatedDataService(client).listFiles(ASSET);
+      const items = await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET);
 
       // Assert
       expect(client.instances.list).toHaveBeenCalledWith(
@@ -203,7 +220,7 @@ describe(CdmRelatedDataService.name, () => {
     it('propagates API errors', async () => {
       vi.mocked(client.instances.list).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmRelatedDataService(client).listFiles(ASSET)).rejects.toThrow('boom');
+      await expect(new CdmRelatedDataService(client, runImmediately).listFiles(ASSET)).rejects.toThrow('boom');
     });
   });
 });

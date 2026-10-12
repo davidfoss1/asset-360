@@ -2,6 +2,7 @@ import type { ByIdsResponse } from '@cognite/sdk';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { makeNode } from '../__mocks__/nodes';
+import { makeCountingRunner, runImmediately } from '../__mocks__/taskRunner';
 import { VIEWS } from '../config/model';
 
 import { CdmAssetService, type AssetClient } from './AssetService';
@@ -18,6 +19,21 @@ describe(CdmAssetService.name, () => {
     };
   });
 
+  it('sends every SDK call through the task runner', async () => {
+    // Arrange
+    const { run, count } = makeCountingRunner();
+    vi.mocked(client.instances.search).mockResolvedValue(response([]));
+    vi.mocked(client.instances.retrieve).mockResolvedValue(response([assetNode('pump-101', { name: 'PUMP-101' })]));
+    const service = new CdmAssetService(client, run);
+
+    // Act
+    await service.search('pump');
+    await service.get({ space: 'instances-space', externalId: 'pump-101' });
+
+    // Assert
+    expect(count()).toBe(2);
+  });
+
   describe('search', () => {
     it('searches the CogniteAsset view and maps results', async () => {
       // Arrange
@@ -26,7 +42,7 @@ describe(CdmAssetService.name, () => {
       );
 
       // Act
-      const results = await new CdmAssetService(client).search('pump');
+      const results = await new CdmAssetService(client, runImmediately).search('pump');
 
       // Assert
       expect(client.instances.search).toHaveBeenCalledWith(
@@ -38,7 +54,7 @@ describe(CdmAssetService.name, () => {
     });
 
     it('does not call the API for a blank query', async () => {
-      const results = await new CdmAssetService(client).search('   ');
+      const results = await new CdmAssetService(client, runImmediately).search('   ');
 
       expect(results).toEqual([]);
       expect(client.instances.search).not.toHaveBeenCalled();
@@ -56,7 +72,7 @@ describe(CdmAssetService.name, () => {
       );
 
       // Act
-      const results = await new CdmAssetService(client).search('PUMP 101');
+      const results = await new CdmAssetService(client, runImmediately).search('PUMP 101');
 
       // Assert
       expect(results.map((r) => r.id.externalId)).toEqual(['a', 'c', 'd']);
@@ -65,7 +81,7 @@ describe(CdmAssetService.name, () => {
     it('falls back to the externalId when an asset has no name', async () => {
       vi.mocked(client.instances.search).mockResolvedValue(response([assetNode('x-1', { description: 'tag x-1' })]));
 
-      const results = await new CdmAssetService(client).search('x-1');
+      const results = await new CdmAssetService(client, runImmediately).search('x-1');
 
       expect(results[0]?.name).toBe('x-1');
     });
@@ -73,7 +89,7 @@ describe(CdmAssetService.name, () => {
     it('propagates API errors', async () => {
       vi.mocked(client.instances.search).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmAssetService(client).search('pump')).rejects.toThrow('boom');
+      await expect(new CdmAssetService(client, runImmediately).search('pump')).rejects.toThrow('boom');
     });
   });
 
@@ -103,7 +119,7 @@ describe(CdmAssetService.name, () => {
       });
 
       // Act
-      const asset = await new CdmAssetService(client).get(id);
+      const asset = await new CdmAssetService(client, runImmediately).get(id);
 
       // Assert
       expect(asset).toEqual({
@@ -119,13 +135,13 @@ describe(CdmAssetService.name, () => {
     it('returns undefined when the asset does not exist', async () => {
       vi.mocked(client.instances.retrieve).mockResolvedValue(response([]));
 
-      expect(await new CdmAssetService(client).get(id)).toBeUndefined();
+      expect(await new CdmAssetService(client, runImmediately).get(id)).toBeUndefined();
     });
 
     it('skips related lookups for an asset without parent, class or type', async () => {
       vi.mocked(client.instances.retrieve).mockResolvedValue(response([assetNode('pump-101', { name: 'PUMP-101' })]));
 
-      const asset = await new CdmAssetService(client).get(id);
+      const asset = await new CdmAssetService(client, runImmediately).get(id);
 
       expect(client.instances.retrieve).toHaveBeenCalledTimes(1);
       expect(asset).toMatchObject({ name: 'PUMP-101', parentName: undefined, assetClass: undefined });
@@ -134,7 +150,7 @@ describe(CdmAssetService.name, () => {
     it('propagates API errors', async () => {
       vi.mocked(client.instances.retrieve).mockRejectedValue(new Error('boom'));
 
-      await expect(new CdmAssetService(client).get(id)).rejects.toThrow('boom');
+      await expect(new CdmAssetService(client, runImmediately).get(id)).rejects.toThrow('boom');
     });
   });
 });

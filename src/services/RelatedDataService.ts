@@ -2,6 +2,7 @@ import type { CogniteClient, FilterDefinition, NodeOrEdge } from '@cognite/sdk';
 
 import { VIEWS, getViewProperties, type ViewRef } from '../config/model';
 import { readInstanceRef, readString, type InstanceRef } from '../lib/properties';
+import type { TaskRunner } from '../lib/taskRunner';
 
 export type TimeSeriesType = 'numeric' | 'string' | 'state';
 export type TimeSeriesItem = { id: InstanceRef; name: string; type: TimeSeriesType; unit?: string };
@@ -37,7 +38,10 @@ const LIST_LIMIT = 100;
 const ACTIVITY_LIMIT = 25;
 
 export class CdmRelatedDataService implements RelatedDataService {
-  constructor(private readonly client: RelatedDataClient) {}
+  constructor(
+    private readonly client: RelatedDataClient,
+    private readonly run: TaskRunner
+  ) {}
 
   async listTimeSeries(asset: InstanceRef): Promise<TimeSeriesItem[]> {
     const nodes = await this.listByAsset(VIEWS.timeSeries, asset);
@@ -94,12 +98,14 @@ export class CdmRelatedDataService implements RelatedDataService {
     const filter: FilterDefinition = {
       containsAny: { property: [view.space, `${view.externalId}/${view.version}`, 'assets'], values: [asset] },
     };
-    const { items } = await this.client.instances.list({
-      instanceType: 'node',
-      sources: [{ source: view }],
-      filter,
-      limit: LIST_LIMIT,
-    });
+    const { items } = await this.run(() =>
+      this.client.instances.list({
+        instanceType: 'node',
+        sources: [{ source: view }],
+        filter,
+        limit: LIST_LIMIT,
+      })
+    );
     return items;
   }
 
@@ -107,10 +113,12 @@ export class CdmRelatedDataService implements RelatedDataService {
     const symbols = new Map<string, string>();
     if (refs.length === 0) return symbols;
 
-    const { items } = await this.client.instances.retrieve({
-      items: refs.map((ref) => ({ instanceType: 'node', ...ref })),
-      sources: [{ source: VIEWS.unit }],
-    });
+    const { items } = await this.run(() =>
+      this.client.instances.retrieve({
+        items: refs.map((ref) => ({ instanceType: 'node', ...ref })),
+        sources: [{ source: VIEWS.unit }],
+      })
+    );
     for (const node of items) {
       const properties = getViewProperties(node, VIEWS.unit);
       const symbol = readString(properties, 'symbol') ?? readString(properties, 'name');
@@ -152,6 +160,6 @@ function sortTime(activity: ActivityItem): number {
 }
 
 /** The only way other modules get the implementation. */
-export function createRelatedDataService(client: RelatedDataClient): RelatedDataService {
-  return new CdmRelatedDataService(client);
+export function createRelatedDataService(client: RelatedDataClient, run: TaskRunner): RelatedDataService {
+  return new CdmRelatedDataService(client, run);
 }

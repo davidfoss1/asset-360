@@ -7,6 +7,7 @@ import {
   readStringList,
   type InstanceRef,
 } from '../lib/properties';
+import type { TaskRunner } from '../lib/taskRunner';
 
 export type AssetSummary = { id: InstanceRef; name: string; description?: string };
 
@@ -28,18 +29,23 @@ const SEARCH_PROPERTIES = ['name', 'description', 'aliases'];
 const SEARCH_LIMIT = 50;
 
 export class CdmAssetService implements AssetService {
-  constructor(private readonly client: AssetClient) {}
+  constructor(
+    private readonly client: AssetClient,
+    private readonly run: TaskRunner
+  ) {}
 
   async search(query: string): Promise<AssetSummary[]> {
     const tokens = tokenize(query);
     if (tokens.length === 0) return [];
 
-    const { items } = await this.client.instances.search({
-      view: VIEWS.asset,
-      query,
-      properties: SEARCH_PROPERTIES,
-      limit: SEARCH_LIMIT,
-    });
+    const { items } = await this.run(() =>
+      this.client.instances.search({
+        view: VIEWS.asset,
+        query,
+        properties: SEARCH_PROPERTIES,
+        limit: SEARCH_LIMIT,
+      })
+    );
 
     // The SDK search request has no `operator`, and the API default is changing from OR to AND
     // (Nov 2026). Enforce AND here so behaviour is the same either side of the change.
@@ -61,10 +67,12 @@ export class CdmAssetService implements AssetService {
   }
 
   private async retrieveOne(id: InstanceRef, view: ViewRef): Promise<NodeOrEdge | undefined> {
-    const { items } = await this.client.instances.retrieve({
-      items: [{ instanceType: 'node', ...id }],
-      sources: [{ source: view }],
-    });
+    const { items } = await this.run(() =>
+      this.client.instances.retrieve({
+        items: [{ instanceType: 'node', ...id }],
+        sources: [{ source: view }],
+      })
+    );
     return items[0];
   }
 
@@ -102,6 +110,6 @@ function toSummary(node: NodeOrEdge): AssetSummary {
 }
 
 /** The only way other modules get the implementation. */
-export function createAssetService(client: AssetClient): AssetService {
-  return new CdmAssetService(client);
+export function createAssetService(client: AssetClient, run: TaskRunner): AssetService {
+  return new CdmAssetService(client, run);
 }
