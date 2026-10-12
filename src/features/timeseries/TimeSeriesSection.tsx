@@ -40,7 +40,6 @@ export function TimeSeriesSection() {
             <IconRefresh aria-hidden />
             Refresh
           </Button>
-          <span className="text-sm text-muted-foreground">Updates every 30 seconds</span>
         </div>
 
         <SectionState label="datapoints" status={dataStatus} emptyTitle="No datapoints for this series" onRetry={refresh}>

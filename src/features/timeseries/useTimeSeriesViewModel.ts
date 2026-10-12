@@ -8,7 +8,6 @@ import type { TimeSeriesItem } from '../../services/RelatedDataService';
 import { useAppState } from '../../state/useAppState';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
-const REFRESH_MS = 30 * 1000;
 
 // react-query rejects `undefined` results, so "no datapoints" is a null window end.
 type SeriesWindow = { points: SeriesPoint[]; windowEnd: number | null };
@@ -48,7 +47,7 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
 
   // The window ends at the series' latest datapoint rather than the current time, so series whose
   // data stopped in the past (static or demo data) still chart. For live series the two coincide.
-  // It is resolved inside queryFn, so each auto-refresh slides the window forward.
+  // It is resolved inside queryFn, so each manual refresh slides the window forward.
   const series = useQuery({
     queryKey: ['datapoints', 'series', selected?.id.space, selected?.id.externalId],
     queryFn: async (): Promise<SeriesWindow> => {
@@ -63,8 +62,6 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
       return { points, windowEnd: newest.timestamp };
     },
     enabled: selected !== undefined && isNumeric,
-    refetchInterval: REFRESH_MS,
-    refetchIntervalInBackground: false,
   });
 
   const latest = useQuery({
@@ -72,8 +69,6 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
     // react-query rejects `undefined` results, so "no datapoints" becomes null.
     queryFn: async () => (selected ? ((await datapoints.getLatest(selected.id)) ?? null) : null),
     enabled: selected !== undefined && !isNumeric,
-    refetchInterval: REFRESH_MS,
-    refetchIntervalInBackground: false,
   });
 
   const active = isNumeric ? series : latest;

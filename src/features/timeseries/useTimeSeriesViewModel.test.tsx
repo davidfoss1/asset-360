@@ -174,19 +174,21 @@ describe(useTimeSeriesViewModel.name, () => {
     await waitFor(() => expect(result.current.dataStatus).toBe('success'));
   });
 
-  it('refetches the chart data every 30 seconds', async () => {
+  it('does not refetch on its own, only when refresh is called', async () => {
     // Arrange
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { result, getSeries } = setup({ series: [PRESSURE] });
     await waitFor(() => expect(result.current.dataStatus).toBe('success'));
     expect(getSeries).toHaveBeenCalledTimes(1);
 
-    // Act
+    // Act: a long time passes with the page open
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
     });
 
     // Assert
+    expect(getSeries).toHaveBeenCalledTimes(1);
+    act(() => result.current.refresh());
     await waitFor(() => expect(getSeries).toHaveBeenCalledTimes(2));
   });
 });
