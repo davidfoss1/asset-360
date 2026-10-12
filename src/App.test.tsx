@@ -99,7 +99,7 @@ describe('App', () => {
       related: {
         listTimeSeries: () => Promise.resolve([]),
         listActivities: () => Promise.resolve({ items: [], hasMore: false }),
-        listFiles: () => Promise.resolve([]),
+        listFiles: () => Promise.resolve({ items: [] }),
       },
       initialState: { assetId: PUMP.id },
     });
@@ -164,7 +164,7 @@ function renderApp({ assets, related, initialState, rawInitialState }: RenderOpt
     related: {
       listTimeSeries: () => Promise.resolve([PRESSURE]),
       listActivities: () => Promise.resolve({ items: [SEAL], hasMore: false }),
-      listFiles: () => Promise.resolve([PID]),
+      listFiles: () => Promise.resolve({ items: [PID] }),
       ...related,
     },
     files: { getDownloadUrl: () => Promise.resolve('https://files.test/pid') },

@@ -28,20 +28,26 @@ export type FileItem = {
   isUploaded: boolean;
 };
 
+/** One page of files. `nextCursor` is passed back to `listFiles` for the next page; absent on the last. */
+export type FilePage = { items: FileItem[]; nextCursor?: string };
+
 export interface RelatedDataService {
+  /** All the asset's time series, up to a cap, since the time series picker cannot load more. */
   listTimeSeries(asset: InstanceRef): Promise<TimeSeriesItem[]>;
   /**
    * The `limit` most recent activities. Sorted by the API. DMS cannot page a custom sort without a
    * cursorable index, so callers see more by asking again with a larger limit.
    */
   listActivities(asset: InstanceRef, limit: number): Promise<ActivityList>;
-  listFiles(asset: InstanceRef): Promise<FileItem[]>;
+  listFiles(asset: InstanceRef, cursor?: string): Promise<FilePage>;
 }
 
 /** The subset of the SDK this service needs. */
 export type RelatedDataClient = { instances: Pick<CogniteClient['instances'], 'list' | 'retrieve'> };
 
-const LIST_LIMIT = 100;
+const TIME_SERIES_PAGE_SIZE = 100;
+const TIME_SERIES_MAX = 1000;
+const FILE_PAGE_SIZE = 50;
 
 export class CdmRelatedDataService implements RelatedDataService {
   constructor(
@@ -50,7 +56,7 @@ export class CdmRelatedDataService implements RelatedDataService {
   ) {}
 
   async listTimeSeries(asset: InstanceRef): Promise<TimeSeriesItem[]> {
-    const nodes = await this.listByAsset(VIEWS.timeSeries, asset, LIST_LIMIT);
+    const nodes = await this.listAllTimeSeriesNodes(asset);
     const unitRefs = uniqueRefs(nodes.map((node) => readInstanceRef(getViewProperties(node, VIEWS.timeSeries), 'unit')));
     const unitSymbols = await this.resolveUnitSymbols(unitRefs);
 
@@ -68,7 +74,7 @@ export class CdmRelatedDataService implements RelatedDataService {
 
   async listActivities(asset: InstanceRef, limit: number): Promise<ActivityList> {
     // One extra row tells us whether there is more without a second request.
-    const nodes = await this.listByAsset(VIEWS.activity, asset, limit + 1, newestFirst(VIEWS.activity));
+    const { nodes } = await this.listByAsset(VIEWS.activity, asset, { limit: limit + 1, sort: newestFirst(VIEWS.activity) });
     const items = nodes.slice(0, limit).map((node): ActivityItem => {
       const properties = getViewProperties(node, VIEWS.activity);
       return {
@@ -84,9 +90,9 @@ export class CdmRelatedDataService implements RelatedDataService {
     return { items, hasMore: nodes.length > limit };
   }
 
-  async listFiles(asset: InstanceRef): Promise<FileItem[]> {
-    const nodes = await this.listByAsset(VIEWS.file, asset, LIST_LIMIT);
-    return nodes.map((node) => {
+  async listFiles(asset: InstanceRef, cursor?: string): Promise<FilePage> {
+    const { nodes, nextCursor } = await this.listByAsset(VIEWS.file, asset, { limit: FILE_PAGE_SIZE, cursor });
+    const items = nodes.map((node) => {
       const properties = getViewProperties(node, VIEWS.file);
       return {
         id: toRef(node),
@@ -96,28 +102,41 @@ export class CdmRelatedDataService implements RelatedDataService {
         isUploaded: properties?.isUploaded === true,
       };
     });
+    return { items, nextCursor };
   }
 
-  /** Nodes of `view` whose `assets` direct-relation list contains the asset. */
+  /** Follows cursors page by page until there are no more, or `TIME_SERIES_MAX` nodes have been read. */
+  private async listAllTimeSeriesNodes(asset: InstanceRef): Promise<NodeOrEdge[]> {
+    const nodes: NodeOrEdge[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.listByAsset(VIEWS.timeSeries, asset, { limit: TIME_SERIES_PAGE_SIZE, cursor });
+      nodes.push(...page.nodes);
+      cursor = page.nextCursor;
+    } while (cursor !== undefined && nodes.length < TIME_SERIES_MAX);
+    return nodes;
+  }
+
+  /** One page of nodes of `view` whose `assets` direct-relation list contains the asset. */
   private async listByAsset(
     view: ViewRef,
     asset: InstanceRef,
-    limit: number,
-    sort?: PropertySortV3[]
-  ): Promise<NodeOrEdge[]> {
+    { limit, sort, cursor }: { limit: number; sort?: PropertySortV3[]; cursor?: string }
+  ): Promise<{ nodes: NodeOrEdge[]; nextCursor?: string }> {
     const filter: FilterDefinition = {
       containsAny: { property: [view.space, `${view.externalId}/${view.version}`, 'assets'], values: [asset] },
     };
-    const { items } = await this.run(() =>
+    const { items, nextCursor } = await this.run(() =>
       this.client.instances.list({
         instanceType: 'node',
         sources: [{ source: view }],
         filter,
         sort,
         limit,
+        cursor,
       })
     );
-    return items;
+    return { nodes: items, nextCursor };
   }
 
   private async resolveUnitSymbols(refs: InstanceRef[]): Promise<Map<string, string>> {

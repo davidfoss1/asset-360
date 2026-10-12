@@ -106,6 +106,51 @@ describe(CdmRelatedDataService.name, () => {
       expect(items.map((i) => i.type)).toEqual(['numeric', 'numeric']);
     });
 
+
+    it('follows the cursor until the API has no more, and looks up the units once', async () => {
+      // Arrange
+      const unit = { space: 'cdf_cdm', externalId: 'bar' };
+      vi.mocked(client.instances.list)
+        .mockResolvedValueOnce({
+          items: [node('ts-1', VIEWS.timeSeries, { name: 'First', unit })],
+          nextCursor: 'page-2',
+        })
+        .mockResolvedValueOnce({ items: [node('ts-2', VIEWS.timeSeries, { name: 'Second', unit })] });
+      vi.mocked(client.instances.retrieve).mockResolvedValue(
+        retrieveResponse([node('bar', VIEWS.unit, { symbol: 'bar' }, 'cdf_cdm')])
+      );
+
+      // Act
+      const items = await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
+
+      // Assert
+      expect(items.map((i) => i.name)).toEqual(['First', 'Second']);
+      expect(client.instances.list).toHaveBeenCalledTimes(2);
+      expect(client.instances.list).toHaveBeenNthCalledWith(1, expect.objectContaining({ cursor: undefined }));
+      expect(client.instances.list).toHaveBeenNthCalledWith(2, expect.objectContaining({ cursor: 'page-2' }));
+      expect(client.instances.retrieve).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops at 1000 time series even if the API has more', async () => {
+      // Arrange
+      let page = 0;
+      vi.mocked(client.instances.list).mockImplementation(() => {
+        const start = page * 100;
+        page += 1;
+        return Promise.resolve({
+          items: Array.from({ length: 100 }, (_, i) => node(`ts-${start + i}`, VIEWS.timeSeries, { name: `TS ${start + i}` })),
+          nextCursor: `page-${page}`,
+        });
+      });
+
+      // Act
+      const items = await new CdmRelatedDataService(client, runImmediately).listTimeSeries(ASSET);
+
+      // Assert
+      expect(items).toHaveLength(1000);
+      expect(client.instances.list).toHaveBeenCalledTimes(10);
+    });
+
     it('propagates API errors', async () => {
       vi.mocked(client.instances.list).mockRejectedValue(new Error('boom'));
 
@@ -227,13 +272,14 @@ describe(CdmRelatedDataService.name, () => {
       );
 
       // Act
-      const items = await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET);
+      const { items } = await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET);
 
       // Assert
       expect(client.instances.list).toHaveBeenCalledWith(
         expect.objectContaining({
           sources: [{ source: VIEWS.file }],
           filter: { containsAny: { property: ['cdf_cdm', 'CogniteFile/v1', 'assets'], values: [ASSET] } },
+          limit: 50,
         })
       );
       expect(items).toEqual([
@@ -252,6 +298,37 @@ describe(CdmRelatedDataService.name, () => {
           isUploaded: false,
         },
       ]);
+    });
+
+    it('starts from the beginning when no cursor is given', async () => {
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse([]));
+
+      await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET);
+
+      expect(client.instances.list).toHaveBeenCalledWith(expect.objectContaining({ cursor: undefined }));
+    });
+
+    it('continues from the cursor it is given, and passes on the next one', async () => {
+      // Arrange
+      vi.mocked(client.instances.list).mockResolvedValue({
+        items: [node('f3', VIEWS.file, { name: 'third.pdf' })],
+        nextCursor: 'cursor-3',
+      });
+
+      // Act
+      const page = await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET, 'cursor-2');
+
+      // Assert
+      expect(client.instances.list).toHaveBeenCalledWith(expect.objectContaining({ cursor: 'cursor-2' }));
+      expect(page.nextCursor).toBe('cursor-3');
+    });
+
+    it('has no next cursor on the last page', async () => {
+      vi.mocked(client.instances.list).mockResolvedValue(listResponse([node('f1', VIEWS.file, { name: 'a.pdf' })]));
+
+      const page = await new CdmRelatedDataService(client, runImmediately).listFiles(ASSET);
+
+      expect(page.nextCursor).toBeUndefined();
     });
 
     it('propagates API errors', async () => {

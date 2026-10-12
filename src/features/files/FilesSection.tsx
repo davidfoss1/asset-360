@@ -4,6 +4,7 @@ import { DataGrid } from '@cognite/aura/data-grid';
 import type { ColumnDef } from '@tanstack/react-table';
 import { useMemo, type ComponentType } from 'react';
 
+import { LoadMore } from '../../components/LoadMore';
 import { SectionState } from '../../components/SectionState';
 import type { InstanceRef } from '../../lib/properties';
 import type { FileItem } from '../../services/RelatedDataService';
@@ -17,7 +18,8 @@ type FilesSectionProps = {
 };
 
 export function FilesSection({ Preview = FilePreview }: FilesSectionProps) {
-  const { status, files, selectedFile, selectFile, closeFile, retry } = useFilesViewModel();
+  const { status, files, hasMore, loadMore, isLoadingMore, loadMoreFailed, selectedFile, selectFile, closeFile, retry } =
+    useFilesViewModel();
   const columns = useMemo(() => makeColumns(selectFile), [selectFile]);
 
   return (
@@ -32,6 +34,7 @@ export function FilesSection({ Preview = FilePreview }: FilesSectionProps) {
             enableSorting
           />
         </div>
+        <LoadMore label="files" hasMore={hasMore} isLoading={isLoadingMore} failed={loadMoreFailed} onLoadMore={loadMore} />
         {selectedFile ? (
           <section aria-label={`Preview of ${selectedFile.name}`} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">

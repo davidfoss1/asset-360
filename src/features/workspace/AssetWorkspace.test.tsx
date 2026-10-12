@@ -19,7 +19,7 @@ function renderWorkspace(initialState: Record<string, unknown> = {}, activities:
       listTimeSeries: () => Promise.resolve([PRESSURE]),
       listActivities: () => Promise.resolve({ items: activities, hasMore: false }),
       listFiles: () =>
-        Promise.resolve([{ id: { space: 's', externalId: 'pid' }, name: 'P&ID.pdf', isUploaded: true }]),
+        Promise.resolve({ items: [{ id: { space: 's', externalId: 'pid' }, name: 'P&ID.pdf', isUploaded: true }] }),
     },
     datapoints: { getSeries: () => Promise.resolve([{ timestamp: 1000, value: 3 }]) },
   });

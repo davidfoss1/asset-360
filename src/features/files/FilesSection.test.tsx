@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubLayoutSize } from '../../__mocks__/stubLayout';
 import { makeDeps, makeViewModelWrapper } from '../../__mocks__/viewModelWrapper';
-import type { FileItem, RelatedDataService } from '../../services/RelatedDataService';
+import type { FileItem, FilePage, RelatedDataService } from '../../services/RelatedDataService';
 
 import { FilesSection } from './FilesSection';
 
@@ -42,13 +42,13 @@ describe(FilesSection.name, () => {
   }
 
   it('shows a loading skeleton first', () => {
-    renderSection(() => new Promise<FileItem[]>(() => undefined));
+    renderSection(() => new Promise<FilePage>(() => undefined));
 
     expect(screen.getByRole('status', { name: 'Loading files' })).toBeInTheDocument();
   });
 
   it('lists files in a table', async () => {
-    renderSection(() => Promise.resolve([PID, PENDING]));
+    renderSection(() => Promise.resolve(page([PID, PENDING])));
 
     expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
     expect(screen.getByText('/diagrams')).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe(FilesSection.name, () => {
 
   it('opens a file in the preview, and closes it again', async () => {
     // Arrange
-    renderSection(() => Promise.resolve([PID]));
+    renderSection(() => Promise.resolve(page([PID])));
     await screen.findByText('P&ID.pdf');
 
     // Act
@@ -70,13 +70,13 @@ describe(FilesSection.name, () => {
   });
 
   it('restores the open file from saved state', async () => {
-    renderSection(() => Promise.resolve([PID]), { assetId: ASSET, fileId: PID.id });
+    renderSection(() => Promise.resolve(page([PID])), { assetId: ASSET, fileId: PID.id });
 
     expect(await screen.findByTestId('preview')).toHaveTextContent('previewing P&ID.pdf');
   });
 
   it('cannot open a file that has not been uploaded', async () => {
-    renderSection(() => Promise.resolve([PENDING]));
+    renderSection(() => Promise.resolve(page([PENDING])));
     await screen.findByText('Pending.pdf');
 
     expect(screen.getByRole('button', { name: 'Open Pending.pdf' })).toBeDisabled();
@@ -84,7 +84,7 @@ describe(FilesSection.name, () => {
   });
 
   it('shows an empty state naming what is missing', async () => {
-    renderSection(() => Promise.resolve([]));
+    renderSection(() => Promise.resolve(page([])));
 
     expect(await screen.findByText('No files for this asset')).toBeInTheDocument();
   });
@@ -94,7 +94,7 @@ describe(FilesSection.name, () => {
     const listFiles = vi
       .fn<RelatedDataService['listFiles']>()
       .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce([PID]);
+      .mockResolvedValueOnce(page([PID]));
     renderSection(listFiles);
 
     // Act
@@ -104,4 +104,51 @@ describe(FilesSection.name, () => {
     await waitFor(() => expect(screen.getByText('P&ID.pdf')).toBeInTheDocument());
     expect(within(screen.getByRole('table', { name: 'Files' })).getByText('P&ID.pdf')).toBeInTheDocument();
   });
+
+  it('has no Load more button on the last page', async () => {
+    renderSection(() => Promise.resolve(page([PID])));
+    await screen.findByText('P&ID.pdf');
+
+    expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument();
+  });
+
+  it('loads and shows the next page when Load more is pressed', async () => {
+    // Arrange
+    const listFiles = vi
+      .fn<RelatedDataService['listFiles']>()
+      .mockResolvedValueOnce(page([PID], 'cursor-2'))
+      .mockResolvedValueOnce(page([PENDING]));
+    renderSection(listFiles);
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Pending.pdf')).toBeInTheDocument();
+    expect(screen.getByText('P&ID.pdf')).toBeInTheDocument();
+    expect(listFiles).toHaveBeenLastCalledWith(ASSET, 'cursor-2');
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Load more' })).not.toBeInTheDocument());
+  });
+
+  it('says so when loading more fails, and lets the user try again', async () => {
+    // Arrange
+    const listFiles = vi
+      .fn<RelatedDataService['listFiles']>()
+      .mockResolvedValueOnce(page([PID], 'cursor-2'))
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(page([PENDING]));
+    renderSection(listFiles);
+    await userEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+    expect(await screen.findByText('Could not load more files.')).toBeInTheDocument();
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }));
+
+    // Assert
+    expect(await screen.findByText('Pending.pdf')).toBeInTheDocument();
+  });
 });
+
+function page(items: FileItem[], nextCursor?: string): FilePage {
+  return { items, nextCursor };
+}
