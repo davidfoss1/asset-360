@@ -10,6 +10,7 @@ import { TimeSeriesSection } from './TimeSeriesSection';
 
 const ASSET = { space: 's', externalId: 'pump-101' };
 const PRESSURE: TimeSeriesItem = { id: { space: 's', externalId: 'pressure' }, name: 'Pressure', type: 'numeric', unit: 'bar' };
+const TEMPERATURE: TimeSeriesItem = { id: { space: 's', externalId: 'temperature' }, name: 'Temperature', type: 'numeric', unit: 'degC' };
 const STATUS: TimeSeriesItem = { id: { space: 's', externalId: 'status' }, name: 'Status', type: 'state' };
 const POINTS: SeriesPoint[] = [
   { timestamp: 1000, value: 2 },
@@ -121,5 +122,39 @@ describe(TimeSeriesSection.name, () => {
 
     // Assert
     expect(getSeries).toHaveBeenCalledTimes(2);
+  });
+
+  describe('picking a series', () => {
+    it('charts the series the user picks', async () => {
+      // Arrange
+      const getSeries = vi.fn<DatapointsService['getSeries']>(() => Promise.resolve(POINTS));
+      renderSection({ listTimeSeries: () => Promise.resolve([PRESSURE, TEMPERATURE]), getSeries });
+      await screen.findByText(/Latest: 5 bar/);
+
+      // Act
+      await userEvent.click(screen.getByRole('combobox', { name: 'Time series' }));
+      await userEvent.click(await screen.findByRole('option', { name: 'Temperature' }));
+
+      // Assert
+      expect(await screen.findByText(/Latest: 5 degC/)).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: 'Time series' })).toHaveTextContent('Temperature');
+      expect(getSeries).toHaveBeenLastCalledWith(TEMPERATURE.id, expect.anything());
+    });
+
+    it('keeps the current series when the user picks it again', async () => {
+      // Arrange
+      const getSeries = vi.fn<DatapointsService['getSeries']>(() => Promise.resolve(POINTS));
+      renderSection({ listTimeSeries: () => Promise.resolve([PRESSURE, TEMPERATURE]), getSeries });
+      await screen.findByText(/Latest: 5 bar/);
+
+      // Act
+      await userEvent.click(screen.getByRole('combobox', { name: 'Time series' }));
+      await userEvent.click(await screen.findByRole('option', { name: 'Pressure' }));
+
+      // Assert
+      expect(screen.getByRole('combobox', { name: 'Time series' })).toHaveTextContent('Pressure');
+      expect(screen.getByText(/Latest: 5 bar/)).toBeInTheDocument();
+      expect(getSeries).toHaveBeenCalledTimes(1);
+    });
   });
 });
