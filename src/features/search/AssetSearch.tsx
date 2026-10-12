@@ -44,7 +44,7 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
       <PopoverTrigger
         render={
           <Button variant="outline" role="combobox" aria-label="Asset" aria-expanded={open} className="w-full justify-between">
-            {asset?.name ?? 'Search assets…'}
+            <span className="min-w-0 flex-1 truncate text-left">{asset?.name ?? 'Search assets…'}</span>
             <IconCaretUpDown aria-hidden className="size-4 shrink-0 opacity-50" />
           </Button>
         }

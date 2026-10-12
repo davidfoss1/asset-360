@@ -37,6 +37,16 @@ describe(AssetSearch.name, () => {
     expect(screen.getByRole('combobox', { name: 'Asset' })).toHaveTextContent('Search assets…');
   });
 
+  it('left-aligns the label and pins the icon to the right, however the button centres its content', async () => {
+    // happy-dom cannot lay anything out, so this guards the classes that give that alignment: the label
+    // takes the free width and is left-aligned, and a long asset name is cut off rather than pushing the icon.
+    renderSearch({ initialState: { assetId: PUMP.id } });
+
+    const label = await screen.findByText('PUMP-101');
+
+    expect(label).toHaveClass('flex-1', 'text-left', 'truncate');
+  });
+
   it('shows the selected asset name on the trigger', async () => {
     renderSearch({ initialState: { assetId: PUMP.id } });
 
