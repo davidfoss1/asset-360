@@ -84,6 +84,57 @@ describe(AssetSearch.name, () => {
     await waitFor(() => expect(screen.getByRole('combobox', { name: 'Asset' })).toHaveTextContent('PUMP-101'));
   });
 
+  describe('reopening', () => {
+    it('starts empty after the list is closed without choosing, while the button keeps the selected asset', async () => {
+      // Arrange: PUMP-101 is selected, then something odd is typed
+      const { user } = renderSearch({ initialState: { assetId: PUMP.id } });
+      await user.click(screen.getByRole('combobox'));
+      await user.type(await screen.findByPlaceholderText(/search by tag/i), 'zzz weird');
+      await vi.advanceTimersByTimeAsync(300);
+
+      // Act: click away, then back on
+      await user.keyboard('{Escape}');
+      await waitFor(() => expect(screen.queryByPlaceholderText(/search by tag/i)).not.toBeInTheDocument());
+      expect(screen.getByRole('combobox', { name: 'Asset' })).toHaveTextContent('PUMP-101');
+      await user.click(screen.getByRole('combobox'));
+
+      // Assert
+      expect(await screen.findByPlaceholderText(/search by tag/i)).toHaveValue('');
+      expect(screen.getByText('Type to search assets.')).toBeInTheDocument();
+    });
+
+    it('starts empty after an asset is chosen', async () => {
+      // Arrange
+      const { user } = renderSearch();
+      await user.click(screen.getByRole('combobox'));
+      await user.type(await screen.findByPlaceholderText(/search by tag/i), 'pump');
+      await vi.advanceTimersByTimeAsync(300);
+      await user.click(await screen.findByRole('option', { name: /PUMP-101/ }));
+      await waitFor(() => expect(screen.queryByPlaceholderText(/search by tag/i)).not.toBeInTheDocument());
+
+      // Act
+      await user.click(screen.getByRole('combobox'));
+
+      // Assert
+      expect(await screen.findByPlaceholderText(/search by tag/i)).toHaveValue('');
+      expect(screen.queryByRole('option')).not.toBeInTheDocument();
+    });
+
+    it('does not search for text that was discarded before its debounce ran out', async () => {
+      // Arrange
+      const { search, user } = renderSearch();
+      await user.click(screen.getByRole('combobox'));
+      await user.type(await screen.findByPlaceholderText(/search by tag/i), 'pump');
+
+      // Act: closed before the 300 ms pass
+      await user.keyboard('{Escape}');
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // Assert
+      expect(search).not.toHaveBeenCalled();
+    });
+  });
+
   it('shows an empty message when nothing matches', async () => {
     const { user } = renderSearch({ search: () => Promise.resolve({ items: [], limited: false }), initialState: { query: 'zzz' } });
     await user.click(screen.getByRole('combobox'));

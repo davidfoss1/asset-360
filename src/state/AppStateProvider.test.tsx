@@ -82,7 +82,7 @@ describe(AppStateProvider.name, () => {
     );
   });
 
-  it('selecting an asset clears the selected time series, file and activity', () => {
+  it('selecting an asset clears the search that found it, and the time series, file and activity of the previous one', () => {
     // Arrange
     const { result } = renderHook(() => useAppState(), {
       wrapper: makeWrapper(api, JSON.stringify({ query: 'pump', assetId: ASSET, timeSeriesId: SERIES, fileId: FILE, activityId: ACTIVITY })),
@@ -94,7 +94,7 @@ describe(AppStateProvider.name, () => {
 
     // Assert
     expect(result.current.state).toEqual({
-      query: 'pump',
+      query: '',
       assetId: other,
       timeSeriesId: null,
       fileId: null,
@@ -103,7 +103,7 @@ describe(AppStateProvider.name, () => {
     });
     expect(api.syncInternalState).toHaveBeenCalledWith(
       JSON.stringify({
-        query: 'pump',
+        query: '',
         assetId: other,
         timeSeriesId: null,
         fileId: null,

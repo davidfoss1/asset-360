@@ -7,7 +7,10 @@ import type { AppState, AssetTab } from './appState';
 export type AppStateContextValue = {
   state: AppState;
   setQuery: (query: string) => void;
-  /** Selecting an asset clears the selected time series, file and activity, which belong to the previous asset. */
+  /**
+   * Selecting an asset also clears the search that found it, and the selected time series, file and
+   * activity, which belong to the previous asset. One update, since two in a row would drop the first.
+   */
   selectAsset: (assetId: InstanceRef | null) => void;
   selectTimeSeries: (timeSeriesId: InstanceRef | null) => void;
   selectFile: (fileId: InstanceRef | null) => void;

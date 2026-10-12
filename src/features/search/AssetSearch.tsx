@@ -39,8 +39,16 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
     return () => clearTimeout(timer);
   }, [draft, query, setQuery, debounceMs]);
 
+  // Closing the list, by clicking away or Escape, throws away what was typed, so it opens empty next time.
+  // (Choosing an asset does the same through `selectAsset`, which clears the query itself.)
+  const closeWithoutChoosing = () => {
+    setOpen(false);
+    setDraft('');
+    if (query !== '') setQuery('');
+  };
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : closeWithoutChoosing())}>
       <PopoverTrigger
         render={
           <Button variant="outline" role="combobox" aria-label="Asset" aria-expanded={open} className="w-full justify-between">
@@ -82,6 +90,7 @@ export function AssetSearch({ debounceMs = 300 }: AssetSearchProps) {
                     onSelect={() => {
                       selectAsset(result.id);
                       setOpen(false);
+                      setDraft('');
                     }}
                   >
                     <div className="flex flex-col">
