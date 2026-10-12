@@ -13,14 +13,13 @@ type ActivityDetailProps = {
 export function ActivityDetail({ activity, onBack }: ActivityDetailProps) {
   return (
     <div className="flex flex-col gap-4">
-      <div>
+      <div className="flex items-start justify-between gap-4">
+        <h3 className="min-w-0 break-words text-lg font-medium">{activity.name}</h3>
         <Button variant="outline" size="sm" onClick={onBack}>
           <IconArrowLeft aria-hidden />
           Back to activities
         </Button>
       </div>
-
-      <h3 className="break-words text-lg font-medium">{activity.name}</h3>
 
       {activity.description ? (
         <p className="whitespace-pre-wrap break-words">{activity.description}</p>

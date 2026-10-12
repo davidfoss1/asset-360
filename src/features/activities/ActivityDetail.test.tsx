@@ -61,6 +61,18 @@ describe(ActivityDetail.name, () => {
     expect(timeOf('Ended')).toBe(NO_VALUE);
   });
 
+  it('puts the Back button at the top right, on the same row as the name', () => {
+    // happy-dom cannot lay anything out, so this guards the structure that gives the placement: the name
+    // and the button share one row, the name first, pushed to opposite ends.
+    renderDetail();
+
+    const heading = screen.getByRole('heading', { name: LONG_NAME });
+    const button = screen.getByRole('button', { name: 'Back to activities' });
+    expect(button.parentElement).toBe(heading.parentElement);
+    expect(heading.parentElement).toHaveClass('justify-between');
+    expect(heading.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('goes back to the list with a clearly labelled button', async () => {
     const { onBack } = renderDetail();
 
