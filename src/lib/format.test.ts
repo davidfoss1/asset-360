@@ -26,12 +26,11 @@ describe(formatNumber.name, () => {
 });
 
 describe(formatClockTime.name, () => {
-  it('shows the time of day down to the second, so two refreshes a few seconds apart look different', () => {
-    const first = formatClockTime(new Date(2026, 8, 1, 14, 3, 7).getTime());
-    const second = formatClockTime(new Date(2026, 8, 1, 14, 3, 22).getTime());
+  it('shows the time of day to the minute, without seconds', () => {
+    const text = formatClockTime(new Date(2026, 8, 1, 14, 3, 27).getTime());
 
-    expect(first).toMatch(/3.07/);
-    expect(second).toMatch(/3.22/);
+    expect(text).toContain('03');
+    expect(text).not.toContain('27');
   });
 
   it('does not include the date', () => {
