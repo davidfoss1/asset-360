@@ -1,22 +1,23 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubLayoutSize } from '../../__mocks__/stubLayout';
 import { makeDeps, makeViewModelWrapper } from '../../__mocks__/viewModelWrapper';
+import type { ActivityItem } from '../../services/RelatedDataService';
 
 import { AssetWorkspace } from './AssetWorkspace';
 
 const ASSET = { space: 's', externalId: 'pump-101' };
+const REPLACE_SEAL: ActivityItem = { id: { space: 's', externalId: 'wo-1' }, name: 'Replace seal' };
 const PRESSURE = { id: { space: 's', externalId: 'pressure' }, name: 'Pressure', type: 'numeric' as const };
 
-function renderWorkspace(initialState: Record<string, unknown> = {}) {
+function renderWorkspace(initialState: Record<string, unknown> = {}, activities: ActivityItem[] = [REPLACE_SEAL]) {
   const deps = makeDeps({
     assets: { get: () => Promise.resolve({ id: ASSET, name: 'PUMP-101' }) },
     related: {
       listTimeSeries: () => Promise.resolve([PRESSURE]),
-      listActivities: () =>
-        Promise.resolve([{ id: { space: 's', externalId: 'wo-1' }, name: 'Replace seal' }]),
+      listActivities: () => Promise.resolve(activities),
       listFiles: () =>
         Promise.resolve([{ id: { space: 's', externalId: 'pid' }, name: 'P&ID.pdf', isUploaded: true }]),
     },
@@ -79,5 +80,22 @@ describe(AssetWorkspace.name, () => {
 
     expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('contains a crash in one section so the rest of the page keeps working', async () => {
+    // Arrange: a start time beyond the range a Date can hold makes the table throw while rendering.
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const outOfRange = { ...REPLACE_SEAL, startTime: Number.MAX_SAFE_INTEGER };
+
+    // Act
+    renderWorkspace({ assetId: ASSET }, [outOfRange]);
+
+    // Assert
+    expect(await screen.findByText('Something went wrong in activities')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'PUMP-101' })).toBeInTheDocument();
+    expect(await screen.findByRole('combobox', { name: 'Time series' })).toHaveTextContent('Pressure');
+    await userEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(await screen.findByText('P&ID.pdf')).toBeInTheDocument();
+    vi.restoreAllMocks();
   });
 });

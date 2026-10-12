@@ -1,6 +1,7 @@
 import { EmptyState, EmptyStateDescription, EmptyStateTitle } from '@cognite/aura/components/empty-state';
 import { Tabs, TabsList, TabsPanel, TabsTrigger } from '@cognite/aura/components/tabs';
 
+import { ErrorBoundary } from '../../components/ErrorBoundary';
 import { isAssetTab } from '../../state/appState';
 import { useAppState } from '../../state/useAppState';
 import { ActivitiesSection } from '../activities/ActivitiesSection';
@@ -21,16 +22,23 @@ export function AssetWorkspace() {
     );
   }
 
+  // Each section gets its own boundary, and a new asset gives a crashed section a fresh start.
+  const resetKey = `${state.assetId.space}/${state.assetId.externalId}`;
+
   return (
     // Aura's CardContent is `items-start`: without w-full this shrinks to its widest child (a table).
     <div className="flex w-full min-w-0 flex-col gap-6">
-      <AssetHeader />
+      <ErrorBoundary label="the asset header" resetKey={resetKey}>
+        <AssetHeader />
+      </ErrorBoundary>
 
       <section aria-labelledby="time-series-heading" className="flex flex-col gap-3">
         <h3 id="time-series-heading" className="text-lg font-medium">
           Time series
         </h3>
-        <TimeSeriesSection />
+        <ErrorBoundary label="time series" resetKey={resetKey}>
+          <TimeSeriesSection />
+        </ErrorBoundary>
       </section>
 
       <Tabs
@@ -44,10 +52,14 @@ export function AssetWorkspace() {
           <TabsTrigger value="files">Files</TabsTrigger>
         </TabsList>
         <TabsPanel value="activities">
-          <ActivitiesSection />
+          <ErrorBoundary label="activities" resetKey={resetKey}>
+            <ActivitiesSection />
+          </ErrorBoundary>
         </TabsPanel>
         <TabsPanel value="files">
-          <FilesSection />
+          <ErrorBoundary label="files" resetKey={resetKey}>
+            <FilesSection />
+          </ErrorBoundary>
         </TabsPanel>
       </Tabs>
     </div>

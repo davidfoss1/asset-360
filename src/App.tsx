@@ -9,6 +9,7 @@ import { Loader } from '@cognite/aura/components/loader';
 import { useEffect, useState } from 'react';
 import type { ComponentProps } from 'react';
 
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { AppDeps } from './deps/AppDepsContext';
 import { AppDepsProvider } from './deps/AppDepsProvider';
 import type { AppHost } from './deps/createAppDeps';
@@ -88,17 +89,20 @@ function App({
           <AppStateProvider api={connection.api} initialState={connection.initialState}>
             <main className="min-h-screen bg-muted/50 text-foreground">
               <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-8">
-                <header className="flex flex-col gap-4">
-                  <h1 className="text-3xl font-medium">Asset 360</h1>
-                  <div className="w-full max-w-xl">
-                    <AssetSearch />
-                  </div>
-                </header>
-                <Card>
-                  <CardContent>
-                    <AssetWorkspace />
-                  </CardContent>
-                </Card>
+                {/* Last resort: the workspace guards each of its sections, so this catches the rest. */}
+                <ErrorBoundary label="Asset 360">
+                  <header className="flex flex-col gap-4">
+                    <h1 className="text-3xl font-medium">Asset 360</h1>
+                    <div className="w-full max-w-xl">
+                      <AssetSearch />
+                    </div>
+                  </header>
+                  <Card>
+                    <CardContent>
+                      <AssetWorkspace />
+                    </CardContent>
+                  </Card>
+                </ErrorBoundary>
               </div>
             </main>
           </AppStateProvider>
