@@ -191,4 +191,129 @@ describe(useTimeSeriesViewModel.name, () => {
     act(() => result.current.refresh());
     await waitFor(() => expect(getSeries).toHaveBeenCalledTimes(2));
   });
+
+  describe('refresh feedback', () => {
+    it('is not refreshing, and has not failed, after the first load', async () => {
+      const { result } = setup({ series: [PRESSURE] });
+
+      await waitFor(() => expect(result.current.dataStatus).toBe('success'));
+
+      expect(result.current.isRefreshing).toBe(false);
+      expect(result.current.refreshFailed).toBe(false);
+    });
+
+    it('does not call the first load a refresh', async () => {
+      const { result } = setup({ series: [PRESSURE], getSeries: () => new Promise<SeriesPoint[]>(() => undefined) });
+
+      await waitFor(() => expect(result.current.dataStatus).toBe('loading'));
+
+      expect(result.current.isRefreshing).toBe(false);
+    });
+
+    it('is refreshing while a refresh is in flight, and keeps the chart meanwhile', async () => {
+      // Arrange
+      const second = deferred<SeriesPoint[]>();
+      const getSeries = vi
+        .fn<DatapointsService['getSeries']>()
+        .mockResolvedValueOnce(POINTS)
+        .mockReturnValueOnce(second.promise);
+      const { result } = setup({ series: [PRESSURE], getSeries });
+      await waitFor(() => expect(result.current.dataStatus).toBe('success'));
+
+      // Act
+      act(() => result.current.refresh());
+
+      // Assert
+      await waitFor(() => expect(result.current.isRefreshing).toBe(true));
+      expect(result.current.dataStatus).toBe('success');
+      expect(result.current.points).toEqual(POINTS);
+      second.resolve(POINTS);
+      await waitFor(() => expect(result.current.isRefreshing).toBe(false));
+    });
+
+    it('is refreshing for a state series too', async () => {
+      // Arrange
+      const second = deferred<{ timestamp: number; value: string }>();
+      const getLatest = vi
+        .fn<DatapointsService['getLatest']>()
+        .mockResolvedValueOnce({ timestamp: LATEST, value: 'RUNNING' })
+        .mockReturnValueOnce(second.promise);
+      const { result } = setup({ series: [STATUS], getLatest });
+      await waitFor(() => expect(result.current.dataStatus).toBe('success'));
+
+      // Act
+      act(() => result.current.refresh());
+
+      // Assert
+      await waitFor(() => expect(result.current.isRefreshing).toBe(true));
+      second.resolve({ timestamp: LATEST, value: 'STOPPED' });
+      await waitFor(() => expect(result.current.isRefreshing).toBe(false));
+    });
+
+    it('says when the data was last fetched, and moves that forward on refresh', async () => {
+      // Arrange
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.setSystemTime(new Date(2026, 9, 12, 14, 0, 0));
+      const { result } = setup({ series: [PRESSURE] });
+      await waitFor(() => expect(result.current.dataStatus).toBe('success'));
+      const first = result.current.updatedAt;
+
+      // Act
+      vi.setSystemTime(new Date(2026, 9, 12, 14, 5, 0));
+      act(() => result.current.refresh());
+
+      // Assert: the fake clock drifts a few milliseconds while the test waits, so compare to the minute
+      const startOfRun = new Date(2026, 9, 12, 14, 0, 0).getTime();
+      const fiveMinutesLater = new Date(2026, 9, 12, 14, 5, 0).getTime();
+      expect(first).toBeGreaterThanOrEqual(startOfRun);
+      expect(first).toBeLessThan(startOfRun + 60 * 1000);
+      await waitFor(() => expect(result.current.updatedAt).toBeGreaterThanOrEqual(fiveMinutesLater));
+    });
+
+    it('has nothing fetched yet before the first load completes', () => {
+      const { result } = setup({ series: [PRESSURE] });
+
+      expect(result.current.updatedAt).toBeUndefined();
+    });
+
+    it('reports a failed refresh while keeping the last good data, and clears it when a refresh works', async () => {
+      // Arrange
+      const getSeries = vi
+        .fn<DatapointsService['getSeries']>()
+        .mockResolvedValueOnce(POINTS)
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce(POINTS);
+      const { result } = setup({ series: [PRESSURE], getSeries });
+      await waitFor(() => expect(result.current.dataStatus).toBe('success'));
+
+      // Act: the refresh fails
+      act(() => result.current.refresh());
+      await waitFor(() => expect(result.current.refreshFailed).toBe(true));
+
+      // Assert: the chart is still there
+      expect(result.current.dataStatus).toBe('success');
+      expect(result.current.points).toEqual(POINTS);
+
+      // Act: the next refresh works
+      act(() => result.current.refresh());
+      await waitFor(() => expect(result.current.refreshFailed).toBe(false));
+    });
+
+    it('does not call a failed first load a failed refresh', async () => {
+      const getSeries = vi.fn<DatapointsService['getSeries']>().mockRejectedValue(new Error('boom'));
+      const { result } = setup({ series: [PRESSURE], getSeries });
+
+      await waitFor(() => expect(result.current.dataStatus).toBe('error'));
+
+      expect(result.current.refreshFailed).toBe(false);
+    });
+  });
 });
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}

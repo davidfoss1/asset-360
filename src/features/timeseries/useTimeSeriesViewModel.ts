@@ -28,6 +28,12 @@ export type TimeSeriesViewModel = {
   /** Latest value for a string or state series. */
   latest: LatestPoint | undefined;
   refresh: () => void;
+  /** A refresh is in flight. The data already shown stays until it finishes. */
+  isRefreshing: boolean;
+  /** The last refresh failed, so what is shown is older than the user asked for. */
+  refreshFailed: boolean;
+  /** When the shown data was fetched (epoch ms). Undefined until the first load completes. */
+  updatedAt: number | undefined;
 };
 
 export function useTimeSeriesViewModel(): TimeSeriesViewModel {
@@ -85,6 +91,9 @@ export function useTimeSeriesViewModel(): TimeSeriesViewModel {
     windowEnd: series.data?.windowEnd ?? undefined,
     latest: latest.data ?? undefined,
     refresh: () => void active.refetch(),
+    isRefreshing: active.isRefetching,
+    refreshFailed: active.isRefetchError,
+    updatedAt: active.dataUpdatedAt === 0 ? undefined : active.dataUpdatedAt,
   };
 }
 

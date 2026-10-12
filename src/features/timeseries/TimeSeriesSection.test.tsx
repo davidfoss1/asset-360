@@ -157,4 +157,76 @@ describe(TimeSeriesSection.name, () => {
       expect(getSeries).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('refresh feedback', () => {
+    it('says when the data was fetched', async () => {
+      renderSection({});
+
+      expect(await screen.findByText(/^Updated /)).toBeInTheDocument();
+    });
+
+    it('shows that it is refreshing, disables the button meanwhile, and keeps the chart', async () => {
+      // Arrange
+      const getSeries = vi
+        .fn<DatapointsService['getSeries']>()
+        .mockResolvedValueOnce(POINTS)
+        .mockReturnValueOnce(new Promise<SeriesPoint[]>(() => undefined));
+      renderSection({ getSeries });
+      await screen.findByText(/Latest: 5 bar/);
+
+      // Act
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      // Assert
+      expect(await screen.findByRole('button', { name: 'Refreshing…' })).toBeDisabled();
+      expect(screen.getByText(/Latest: 5 bar/)).toBeInTheDocument();
+    });
+
+    it('goes back to Refresh when it is done', async () => {
+      renderSection({});
+      await screen.findByText(/Latest: 5 bar/);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      expect(await screen.findByRole('button', { name: 'Refresh' })).toBeEnabled();
+    });
+
+    it('says so when a refresh fails, and that the chart is older data', async () => {
+      // Arrange
+      const getSeries = vi
+        .fn<DatapointsService['getSeries']>()
+        .mockResolvedValueOnce(POINTS)
+        .mockRejectedValueOnce(new Error('boom'));
+      renderSection({ getSeries });
+      await screen.findByText(/Latest: 5 bar/);
+
+      // Act
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      // Assert
+      expect(await screen.findByText(/Could not refresh\. Showing data from /)).toBeInTheDocument();
+      expect(screen.getByText(/Latest: 5 bar/)).toBeInTheDocument();
+      expect(screen.queryByText(/^Updated /)).not.toBeInTheDocument();
+    });
+
+    it('drops the failure message once a refresh works', async () => {
+      // Arrange
+      const getSeries = vi
+        .fn<DatapointsService['getSeries']>()
+        .mockResolvedValueOnce(POINTS)
+        .mockRejectedValueOnce(new Error('boom'))
+        .mockResolvedValueOnce(POINTS);
+      renderSection({ getSeries });
+      await screen.findByText(/Latest: 5 bar/);
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+      await screen.findByText(/Could not refresh/);
+
+      // Act
+      await userEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+
+      // Assert
+      expect(await screen.findByText(/^Updated /)).toBeInTheDocument();
+      expect(screen.queryByText(/Could not refresh/)).not.toBeInTheDocument();
+    });
+  });
 });

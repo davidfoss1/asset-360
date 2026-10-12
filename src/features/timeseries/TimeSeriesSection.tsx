@@ -3,7 +3,7 @@ import { Combobox } from '@cognite/aura/components/combobox';
 import { IconRefresh } from '@tabler/icons-react';
 
 import { SectionState } from '../../components/SectionState';
-import { formatDateTime, formatNumber } from '../../lib/format';
+import { formatClockTime, formatDateTime, formatNumber } from '../../lib/format';
 import type { InstanceRef } from '../../lib/properties';
 
 import { summarize } from './summarize';
@@ -11,8 +11,21 @@ import { TimeSeriesChart } from './TimeSeriesChart';
 import { useTimeSeriesViewModel } from './useTimeSeriesViewModel';
 
 export function TimeSeriesSection() {
-  const { listStatus, timeSeries, selected, selectSeries, retryList, dataStatus, points, windowEnd, latest, refresh } =
-    useTimeSeriesViewModel();
+  const {
+    listStatus,
+    timeSeries,
+    selected,
+    selectSeries,
+    retryList,
+    dataStatus,
+    points,
+    windowEnd,
+    latest,
+    refresh,
+    isRefreshing,
+    refreshFailed,
+    updatedAt,
+  } = useTimeSeriesViewModel();
 
   const options = timeSeries.map((item) => ({ value: keyOf(item.id), label: item.name }));
   const unit = selected?.unit ? ` ${selected.unit}` : '';
@@ -36,10 +49,14 @@ export function TimeSeriesSection() {
             searchPlaceholder="Search time series"
             emptyText="No time series found."
           />
-          <Button variant="outline" size="sm" onClick={refresh}>
-            <IconRefresh aria-hidden />
-            Refresh
+          <Button variant="outline" size="sm" onClick={refresh} disabled={isRefreshing}>
+            <IconRefresh aria-hidden className={isRefreshing ? 'animate-spin' : undefined} />
+            {isRefreshing ? 'Refreshing…' : 'Refresh'}
           </Button>
+          {/* A live region, so a screen reader hears the outcome of a refresh as well as a sighted user. */}
+          <p role="status" className={refreshFailed && !isRefreshing ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+            {refreshStatus({ isRefreshing, refreshFailed, updatedAt })}
+          </p>
         </div>
 
         <SectionState label="datapoints" status={dataStatus} emptyTitle="No datapoints for this series" onRetry={refresh}>
@@ -74,4 +91,19 @@ export function TimeSeriesSection() {
 
 function keyOf({ space, externalId }: InstanceRef): string {
   return `${space}/${externalId}`;
+}
+
+function refreshStatus({
+  isRefreshing,
+  refreshFailed,
+  updatedAt,
+}: {
+  isRefreshing: boolean;
+  refreshFailed: boolean;
+  updatedAt: number | undefined;
+}): string {
+  if (isRefreshing || updatedAt === undefined) return '';
+  return refreshFailed
+    ? `Could not refresh. Showing data from ${formatClockTime(updatedAt)}.`
+    : `Updated ${formatClockTime(updatedAt)}`;
 }
